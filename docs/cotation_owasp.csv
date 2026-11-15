@@ -1,0 +1,113 @@
+﻿risque;code;groupe;facteur;note_avant;note_apres;justification
+R-01;A1;Agent menaçant;Compétence;5;5;Utilisateur avancé : il suffit de modifier un identifiant dans une requête avec les outils du navigateur.
+R-01;A2;Agent menaçant;Motivation;9;9;Forte récompense : une copie au nom d'un autre destinataire permet de divulguer en faisant accuser un tiers (P1).
+R-01;A3;Agent menaçant;Opportunité;7;7;Un compte valide suffit, sans privilège particulier.
+R-01;A4;Agent menaçant;Taille du groupe;6;6;Tous les utilisateurs authentifiés de toutes les organisations.
+R-01;V1;Vulnérabilité;Facilité de découverte;7;3;Avant : identifiants visibles dans /api/copies/{id}. Après : contrôle organisation + ressource à chaque accès (SR-AUZ-02), faille difficile à trouver.
+R-01;V2;Vulnérabilité;Facilité d'exploitation;5;1;"Avant : changer un identifiant. Après : chaque téléchargement vérifie en base état, organisation et destinataire (SR-AUZ-07) ; un lien seul n'autorise rien."
+R-01;V3;Vulnérabilité;Notoriété;9;4;Avant : IDOR/BOLA est n°1 du Top 10 OWASP API. Après : réponse 403/404 uniforme qui ne révèle pas l'existence de la ressource.
+R-01;V4;Vulnérabilité;Détection d'intrusion;8;3;Avant : accès journalisés sans revue. Après : échecs d'autorisation journalisés et corrélés (SR-LOG-03), revus par l'auditeur.
+R-01;T1;Impact technique;Perte de confidentialité;7;7;Copie complète d'un jeu (données critiques étendues). Inchangé : si le contrôle échoue, la fuite est la même.
+R-01;T2;Impact technique;Perte d'intégrité;3;3;La preuve d'attribution de cette copie désigne la mauvaise personne (corruption grave mais limitée).
+R-01;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-01;T4;Impact technique;Perte de responsabilité;7;1;Avant : traçable seulement si les journaux sont exploités. Après : chaque téléchargement est lié à l'identité de l'acteur (SR-NRP-01).
+R-01;M1;Impact métier;Préjudice financier;3;3;Effet mineur pour l'organisation propriétaire (hypothèse : pas de données financières sensibles).
+R-01;M2;Impact métier;Atteinte à la réputation;9;9;Atteinte à la marque : une fuite entre organisations rompt la promesse centrale de la plateforme. Impact inchangé si l'attaque réussit.
+R-01;M3;Impact métier;Non-conformité;5;5;Violation claire de la protection des données confiées (loi organique tunisienne 2004-63 si données personnelles).
+R-01;M4;Impact métier;Atteinte à la vie privée;7;7;Jusqu'à 1 000 000 de lignes par jeu : des milliers de personnes si le jeu est nominatif.
+R-02;A1;Agent menaçant;Compétence;5;5;"Utilisateur avancé : trier, permuter ou renommer avec un tableur ; une collision sérialisée (12|34 / 1|234) demande un peu plus."
+R-02;A2;Agent menaçant;Motivation;9;9;Forte récompense : effacer sa trace ou provoquer la fausse attribution d'un tiers.
+R-02;A3;Agent menaçant;Opportunité;7;7;Une copie légitime (P1) ou un compte d'import (P4) suffit.
+R-02;A4;Agent menaçant;Taille du groupe;5;5;Destinataires des organisations partenaires.
+R-02;V1;Vulnérabilité;Facilité de découverte;7;3;Avant : une lecture positionnelle se casse dès qu'on trie. Après : identité (id_jeu, version_schéma, pk, attribute_id), sérialisation à longueurs explicites (SR-INT-09).
+R-02;V2;Vulnérabilité;Facilité d'exploitation;9;3;"Avant : un tri suffit, outil automatique (tableur). Après : tri et permutation sans effet ; collisions refusées à l'import (SR-INT-08) ; reste le renommage, qui donne « Indéterminé »."
+R-02;V3;Vulnérabilité;Notoriété;6;6;Méthode publique (principe de Kerckhoffs, dépôt et littérature) : la sensibilité à la structure est évidente. Inchangé.
+R-02;V4;Vulnérabilité;Détection d'intrusion;9;8;Les transformations se font hors ligne. Après : seules les collisions à l'import sont journalisées (SR-ERR-02).
+R-02;T1;Impact technique;Perte de confidentialité;2;2;Aucune donnée nouvelle n'est divulguée par la transformation elle-même.
+R-02;T2;Impact technique;Perte d'intégrité;7;3;Avant : verdict d'attribution faux. Après : verdict « Indéterminé » au lieu d'une fausse attribution (SR-INT-14).
+R-02;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-02;T4;Impact technique;Perte de responsabilité;9;7;Avant : fuite totalement anonyme. Après : traçable sauf renommage non reconnu.
+R-02;M1;Impact métier;Préjudice financier;3;3;Le propriétaire ne peut pas poursuivre la fuite : effet mineur.
+R-02;M2;Impact métier;Atteinte à la réputation;5;1;Avant : accusation infondée d'un partenaire. Après : la plateforme n'accuse personne (« Indéterminé »).
+R-02;M3;Impact métier;Non-conformité;5;2;Avant : preuve fausse utilisée contre un destinataire. Après : écart mineur (fuite non attribuée).
+R-02;M4;Impact métier;Atteinte à la vie privée;3;3;Un individu : le destinataire faussement désigné, ou celui qui échappe à l'attribution.
+R-03;A1;Agent menaçant;Compétence;6;6;Compétences en programmation et en SQL pour agir sur la base ou l'API.
+R-03;A2;Agent menaçant;Motivation;9;9;Forte récompense : réattribuer une fuite ou protéger un complice.
+R-03;A3;Agent menaçant;Opportunité;4;4;Accès particulier requis : rôle gestionnaire ou propriétaire, ou accès à la base.
+R-03;A4;Agent menaçant;Taille du groupe;4;4;Petit groupe d'initiés de l'organisation.
+R-03;V1;Vulnérabilité;Facilité de découverte;7;7;Un initié connaît le schéma du registre. Inchangé.
+R-03;V2;Vulnérabilité;Facilité d'exploitation;5;3;"Avant : un UPDATE suffit. Après : registre signé et chaîné (SR-INT-05) ; modifier sans casser la chaîne exige la clé du credential store."
+R-03;V3;Vulnérabilité;Notoriété;6;6;Évident pour un initié. Inchangé.
+R-03;V4;Vulnérabilité;Détection d'intrusion;8;1;Avant : journalisé sans revue. Après : contrôle de cohérence registre–copies–audit (SR-LOG-04) et vérification de la chaîne avant tout rapport (SR-PRV-03).
+R-03;T1;Impact technique;Perte de confidentialité;2;2;Peu de données divulguées.
+R-03;T2;Impact technique;Perte d'intégrité;7;3;Avant : le registre, référence de la preuve, est faux sans qu'on le sache. Après : l'altération est détectée et l'association déclarée non fiable.
+R-03;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-03;T4;Impact technique;Perte de responsabilité;9;1;Avant : l'auteur de la modification est effacé. Après : le chaînage enregistre les deux identités (SR-NRP-04).
+R-03;M1;Impact métier;Préjudice financier;3;3;La preuve de cette distribution est perdue : effet mineur.
+R-03;M2;Impact métier;Atteinte à la réputation;5;1;Avant : perte de confiance dans la preuve. Après : altération détectée, aucune fausse association n'est publiée.
+R-03;M3;Impact métier;Non-conformité;7;2;Avant : falsification de preuve (violation grave). Après : incident interne détecté et tracé.
+R-03;M4;Impact métier;Atteinte à la vie privée;3;3;Un individu : le destinataire faussement associé.
+R-04;A1;Agent menaçant;Compétence;3;3;Quelques compétences techniques : générer un gros fichier ou une ligne très longue.
+R-04;A2;Agent menaçant;Motivation;4;4;Récompense possible : nuire ou bloquer une organisation concurrente.
+R-04;A3;Agent menaçant;Opportunité;7;7;Un compte autorisé à importer suffit.
+R-04;A4;Agent menaçant;Taille du groupe;6;6;Utilisateurs authentifiés ayant le droit d'import.
+R-04;V1;Vulnérabilité;Facilité de découverte;7;3;Avant : il suffit d'essayer un gros fichier. Après : limites 50 Mo / 1 000 000 lignes, colonnes et longueur de ligne bornées.
+R-04;V2;Vulnérabilité;Facilité d'exploitation;9;3;Avant : générateurs de fichiers automatiques. Après : rejet avant traitement, lecture en flux par lots de 500, file bornée et timeout 60 s (SR-DIS-01 à 03).
+R-04;V3;Vulnérabilité;Notoriété;9;4;Avant : attaque connue de tous. Après : la faiblesse résiduelle (concurrence près des limites) est cachée.
+R-04;V4;Vulnérabilité;Détection d'intrusion;8;1;Avant : un OutOfMemoryError se voit mais n'est pas analysé. Après : rejet journalisé (SR-ERR-02) et quota dépassé en 429 (SR-DIS-04).
+R-04;T1;Impact technique;Perte de confidentialité;2;2;Une trace d'erreur pourrait exposer des détails techniques mineurs.
+R-04;T2;Impact technique;Perte d'intégrité;1;1;Aucun artefact partiel publié (états PENDING / FAILED).
+R-04;T3;Impact technique;Perte de disponibilité;7;1;Avant : OutOfMemoryError, tout le serveur s'arrête. Après : seul le job fautif échoue, les autres continuent.
+R-04;T4;Impact technique;Perte de responsabilité;1;1;L'import est rattaché à un compte authentifié.
+R-04;M1;Impact métier;Préjudice financier;3;1;Avant : traitements bloqués et reprise. Après : coût inférieur au coût de correction.
+R-04;M2;Impact métier;Atteinte à la réputation;5;1;Avant : plateforme indisponible pour tous. Après : dégâts minimes.
+R-04;M3;Impact métier;Non-conformité;2;0;Avant : engagement de service non tenu (mineur). Après : sans objet.
+R-04;M4;Impact métier;Atteinte à la vie privée;0;0;Sans objet : aucune donnée personnelle exposée.
+R-05;A1;Agent menaçant;Compétence;5;5;Utilisateur avancé : modifier une requête JSON ou un rapport exporté.
+R-05;A2;Agent menaçant;Motivation;9;9;Forte récompense : accuser un destinataire ou innocenter un complice.
+R-05;A3;Agent menaçant;Opportunité;4;4;Accès particulier : rôle enquêteur.
+R-05;A4;Agent menaçant;Taille du groupe;4;4;Petit groupe d'enquêteurs.
+R-05;V1;Vulnérabilité;Facilité de découverte;7;3;Avant : n, k et p-valeur visibles dans la requête. Après : le serveur ne reçoit que l'extrait (SR-INT-10).
+R-05;V2;Vulnérabilité;Facilité d'exploitation;5;3;Avant : modifier un champ. Après : seule reste la soumission d'un extrait issu de la copie réelle d'un tiers, qui exige d'y avoir accès.
+R-05;V3;Vulnérabilité;Notoriété;6;4;Avant : évident pour un enquêteur. Après : la faiblesse résiduelle n'est pas apparente.
+R-05;V4;Vulnérabilité;Détection d'intrusion;8;3;Avant : journalisé sans revue. Après : chaque investigation est journalisée avec le hash de l'extrait (SR-NRP-01), revue par l'auditeur.
+R-05;T1;Impact technique;Perte de confidentialité;2;2;Peu de données divulguées.
+R-05;T2;Impact technique;Perte d'intégrité;7;3;"Avant : verdicts arrangés invisibles. Après : valeurs forgées ignorées, rapport modifié = signature invalide ; reste un extrait réel d'un tiers."
+R-05;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-05;T4;Impact technique;Perte de responsabilité;7;1;Avant : traçable si l'on relit les journaux. Après : hash de l'extrait et identité de l'enquêteur dans le rapport signé.
+R-05;M1;Impact métier;Préjudice financier;3;3;Contentieux possible avec le destinataire visé.
+R-05;M2;Impact métier;Atteinte à la réputation;5;5;"Perte de crédit si un partenaire est soupçonné à tort ; le cas résiduel reste possible."
+R-05;M3;Impact métier;Non-conformité;7;5;Avant : fausse preuve. Après : le rapport reste un indice technique avec réserves, jamais une accusation.
+R-05;M4;Impact métier;Atteinte à la vie privée;3;3;Un individu : le destinataire soupçonné.
+R-06;A1;Agent menaçant;Compétence;5;5;Utilisateur avancé : arrondir, bruiter ou supprimer des colonnes dans un tableur ou avec pandas.
+R-06;A2;Agent menaçant;Motivation;9;9;Forte récompense : divulguer sans être identifié.
+R-06;A3;Agent menaçant;Opportunité;9;9;Aucun accès supplémentaire : il possède déjà sa copie, le travail se fait hors ligne.
+R-06;A4;Agent menaçant;Taille du groupe;5;5;Destinataires des organisations partenaires.
+R-06;V1;Vulnérabilité;Facilité de découverte;7;7;Méthode publique (Kerckhoffs) : les colonnes numériques marquables sont identifiables. Inchangé.
+R-06;V2;Vulnérabilité;Facilité d'exploitation;5;3;"Avant : arrondir une colonne suffit. Après : marquage réparti sur plusieurs colonnes ; il faut dégrader toutes les colonnes au-delà de δ, au prix de l'utilité."
+R-06;V3;Vulnérabilité;Notoriété;9;9;Limites publiées dans le README et la littérature (bruit ≥ δ/2, arrondi > δ). Inchangé.
+R-06;V4;Vulnérabilité;Détection d'intrusion;9;9;Le nettoyage se fait hors ligne, rien n'est journalisé. Inchangé.
+R-06;T1;Impact technique;Perte de confidentialité;7;7;Les lignes exfiltrées sont des données critiques étendues.
+R-06;T2;Impact technique;Perte d'intégrité;1;1;Les données divulguées sont légèrement dégradées.
+R-06;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-06;T4;Impact technique;Perte de responsabilité;9;9;Fuite non attribuable : verdict « Indéterminé ». Inchangé, risque résiduel assumé.
+R-06;M1;Impact métier;Préjudice financier;3;3;Effet mineur pour l'organisation propriétaire.
+R-06;M2;Impact métier;Atteinte à la réputation;5;5;Perte de crédit : la plateforme ne retrouve pas l'auteur.
+R-06;M3;Impact métier;Non-conformité;5;5;Violation claire de la confidentialité des données confiées.
+R-06;M4;Impact métier;Atteinte à la vie privée;7;7;Des milliers de personnes si le jeu est nominatif.
+R-07;A1;Agent menaçant;Compétence;6;6;Compétences en programmation : comparer des copies et repérer les cellules qui diffèrent.
+R-07;A2;Agent menaçant;Motivation;9;9;Forte récompense : divulguer sans être identifié.
+R-07;A3;Agent menaçant;Opportunité;4;4;Ressources particulières : au moins deux copies de destinataires différents et une entente.
+R-07;A4;Agent menaçant;Taille du groupe;5;5;Destinataires des organisations partenaires.
+R-07;V1;Vulnérabilité;Facilité de découverte;7;7;Un simple diff entre deux copies révèle les cellules d'empreinte.
+R-07;V2;Vulnérabilité;Facilité d'exploitation;5;5;Facile : moyenne ou remplacement des cellules qui diffèrent.
+R-07;V3;Vulnérabilité;Notoriété;6;6;Attaque classique de la littérature sur le fingerprinting.
+R-07;V4;Vulnérabilité;Détection d'intrusion;9;9;Hors ligne, non journalisé.
+R-07;T1;Impact technique;Perte de confidentialité;7;7;Les données divulguées sont étendues et critiques.
+R-07;T2;Impact technique;Perte d'intégrité;1;1;Données légèrement altérées.
+R-07;T3;Impact technique;Perte de disponibilité;1;1;Aucun service interrompu.
+R-07;T4;Impact technique;Perte de responsabilité;7;7;Le filigrane commun prouve encore l'origine du jeu, mais l'empreinte du destinataire est perdue.
+R-07;M1;Impact métier;Préjudice financier;3;3;Effet mineur pour l'organisation propriétaire.
+R-07;M2;Impact métier;Atteinte à la réputation;5;5;Perte de crédit : limite assumée et documentée.
+R-07;M3;Impact métier;Non-conformité;5;5;Violation claire de la confidentialité des données confiées.
+R-07;M4;Impact métier;Atteinte à la vie privée;7;7;Des milliers de personnes si le jeu est nominatif.
