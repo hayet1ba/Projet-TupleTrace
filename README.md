@@ -122,14 +122,17 @@ L'approche SRE porte sur le **code de dissimulation** (marquage, extraction, att
 
 ## Documentation
 
-Les documents de référence sont dans le dossier [`docs/`](docs/) :
+Les documents du projet sont disponibles dans le dossier [`docs/`](docs/).
 
-| Fichier | Contenu |
+| Fichier | Description |
 |---|---|
-| [`cahier_des_charges.pdf`](docs/cahier_des_charges.pdf) | Cahier des charges (v2.0) : contexte, objectifs, périmètre, méthode de marquage, architecture, démarche de sécurité, planning |
-| [`recueil_des_besoins.pdf`](docs/recueil_des_besoins.pdf) | Recueil des besoins (v2.1) : besoins fonctionnels, référentiel SR, cotation OWASP complète (16 facteurs), SLI/SLO, campagnes de vérification, traçabilité |
-| `exigences.csv` | Référentiel des 62 SR (séparateur `;`, UTF-8 avec BOM), à régénérer à chaque évolution |
-| [`cotation_owasp.csv`](docs/cotation_owasp.csv) | Cotation OWASP Risk Rating de R-01 à R-07 : 16 facteurs notés avant et après contre-mesures, avec justifications (séparateur `;`, UTF-8 avec BOM) |
+| [`cahier_des_charges.pdf`](docs/cahier_des_charges.pdf) | **Phase 1 — Cahier des charges (v2.0)** : présentation du projet, objectifs, fonctionnalités, méthodes de marquage et architecture générale. |
+| [`recueil_des_besoins.pdf`](docs/recueil_des_besoins.pdf) | **Phase 1 — Recueil des besoins et SRE (v2.1)** : 35 besoins fonctionnels, 62 exigences de sécurité, méthodologie SQUARE, risques OWASP et tests prévus. |
+| [`cahier_conceptuel.pdf`](docs/cahier_conceptuel.pdf) | **Phase 2 — Cahier conceptuel (v1.0)** : architecture détaillée, modèle des tuples, frontières de confiance F1–F4, diagrammes de séquence, analyse STRIDE et contre-mesures techniques. |
+| [`exigences.csv`](docs/exigences.csv) | Référentiel des 62 exigences de sécurité avec leurs priorités et tests associés. |
+| [`cotation_owasp.csv`](docs/cotation_owasp.csv) | Évaluation des sept risques R-01 à R-07 selon les 16 facteurs OWASP Risk Rating, avec justifications. |
+
+Ces documents sont mis à jour progressivement selon les différentes phases de l'atelier.
 
 ## Tests et évaluation
 
