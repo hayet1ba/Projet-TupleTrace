@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/34873638/README.md)
 # TupleTrace
 
 **Plateforme sécurisée de partage de jeux de données traçables : tatouage, stéganographie et empreinte numérique de données tabulaires.**
