@@ -4,7 +4,6 @@
 
 Atelier PWA/SPA du module *Sécurité Applicative* — SUP'COM (École Supérieure des Communications de Tunis), INDP3 CySeD, année universitaire 2026–2027.
 
-| | |
 |---|---|
 | **Socle** | Jakarta EE 11 · WildFly 42 · Java 25 |
 | **Équipe** | OMRANE Yosr · AMMAR Chaima · BEN AMOR Hayet |
