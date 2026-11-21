@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_1.xsd"
+         version="6.1">
+  <!-- Le test de bout en bout exige un listener HTTPS configuré sur Undertow. -->
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>Refus par défaut</web-resource-name>
+      <url-pattern>/api/*</url-pattern>
+    </web-resource-collection>
+    <auth-constraint/>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>Santé publique</web-resource-name>
+      <url-pattern>/api/health</url-pattern>
+      <http-method>GET</http-method>
+    </web-resource-collection>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>Exemple protégé</web-resource-name>
+      <url-pattern>/api/private</url-pattern>
+      <http-method>GET</http-method>
+    </web-resource-collection>
+    <auth-constraint><role-name>AUDITEUR</role-name></auth-constraint>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
+  <login-config>
+    <auth-method>BASIC</auth-method>
+    <realm-name>ApplicationRealm</realm-name>
+  </login-config>
+  <security-role><role-name>AUDITEUR</role-name></security-role>
+  <deny-uncovered-http-methods/>
+</web-app>
