@@ -13,6 +13,7 @@
     <module>tupletrace-qim</module>
     <module>tupletrace-security</module>
     <module>tupletrace-api</module>
+    <module>db</module>
   </modules>
 
   <properties>

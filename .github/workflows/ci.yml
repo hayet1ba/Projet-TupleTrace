@@ -22,8 +22,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Compiler, tester et assembler le WAR
-        run: sh ./mvnw -B -ntp clean verify
+      - name: Compiler et tester sur PostgreSQL 17
+        env:
+          TT_DATABASE: tupletrace_test
+          TT_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/tupletrace_test
+        run: |
+          set -euo pipefail
+          POSTGRES_PASSWORD=$(openssl rand -hex 32)
+          TT_MIGRATION_PASSWORD=$(openssl rand -hex 32)
+          TT_APP_PASSWORD=$(openssl rand -hex 32)
+          for value in "$POSTGRES_PASSWORD" "$TT_MIGRATION_PASSWORD" "$TT_APP_PASSWORD"; do
+            echo "::add-mask::$value"
+          done
+          export POSTGRES_PASSWORD TT_MIGRATION_PASSWORD TT_APP_PASSWORD
+          docker compose -p tupletrace-ci -f ops/postgres/compose.yaml up -d --wait --wait-timeout 120
+          unset POSTGRES_PASSWORD
+          sh ./mvnw -B -ntp -Ppostgres-it clean verify
+          printf 'TT_JDBC_URL=%s\nTT_APP_PASSWORD=%s\n' "$TT_JDBC_URL" "$TT_APP_PASSWORD" >> "$GITHUB_ENV"
       - name: Vérifier le déploiement HTTPS sur WildFly 42
         env:
           WILDFLY_VERSION: 42.0.0.Final
@@ -42,16 +57,21 @@ jobs:
           "$server/bin/add-user.sh" -s -a -u ci-auditeur -p "$TT_TEST_AUDITEUR" -g AUDITEUR >/dev/null
           "$server/bin/add-user.sh" -s -a -u ci-destinataire -p "$TT_TEST_DESTINATAIRE" -g DESTINATAIRE >/dev/null
           cp tupletrace-api/target/tupletrace.war "$deployments/"
+          cp db/target/wildfly-driver/postgresql.jar "$deployments/"
           "$server/bin/standalone.sh" -b 127.0.0.1 > "$RUNNER_TEMP/wildfly.log" 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for attempt in {1..120}; do
             test ! -f "$deployments/tupletrace.war.failed"
+            test ! -f "$deployments/postgresql.jar.failed"
             kill -0 "$pid"
-            if test -f "$deployments/tupletrace.war.deployed"; then break; fi
+            if test -f "$deployments/tupletrace.war.deployed" && test -f "$deployments/postgresql.jar.deployed"; then break; fi
             sleep 1
           done
           test -f "$deployments/tupletrace.war.deployed"
+          test -f "$deployments/postgresql.jar.deployed"
+          "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
+          "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
           python3 ci/check-wildfly.py
 
   secrets:

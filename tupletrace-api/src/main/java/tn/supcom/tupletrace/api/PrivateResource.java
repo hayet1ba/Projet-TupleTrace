@@ -15,7 +15,7 @@ public class PrivateResource {
     @GET
     @RolesAllowed("AUDITEUR")
     @Produces(MediaType.TEXT_PLAIN)
-    public String example() {
+    public String restrictedMessage() {
         return "TupleTrace";
     }
 }
