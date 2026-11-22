@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
+    environment:
+      POSTGRES_DB: ${TT_DATABASE:-tupletrace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      TT_MIGRATION_PASSWORD: ${TT_MIGRATION_PASSWORD:?}
+      TT_APP_PASSWORD: ${TT_APP_PASSWORD:?}
+      POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256"
+    ports:
+      - "127.0.0.1:${TT_DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./bootstrap.sql:/docker-entrypoint-initdb.d/10-bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  db-data:

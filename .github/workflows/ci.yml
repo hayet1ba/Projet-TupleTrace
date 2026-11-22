@@ -1,0 +1,139 @@
+name: CI TupleTrace
+
+on:
+  push:
+    branches: [cheima]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Compiler et tester sur PostgreSQL 17
+        env:
+          TT_DATABASE: tupletrace_test
+          TT_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/tupletrace_test
+        run: |
+          set -euo pipefail
+          POSTGRES_PASSWORD=$(openssl rand -hex 32)
+          TT_MIGRATION_PASSWORD=$(openssl rand -hex 32)
+          TT_APP_PASSWORD=$(openssl rand -hex 32)
+          for value in "$POSTGRES_PASSWORD" "$TT_MIGRATION_PASSWORD" "$TT_APP_PASSWORD"; do
+            echo "::add-mask::$value"
+          done
+          export POSTGRES_PASSWORD TT_MIGRATION_PASSWORD TT_APP_PASSWORD
+          docker compose -p tupletrace-ci -f ops/postgres/compose.yaml up -d --wait --wait-timeout 120
+          unset POSTGRES_PASSWORD
+          sh ./mvnw -B -ntp -Ppostgres-it clean verify
+          printf 'TT_JDBC_URL=%s\nTT_APP_PASSWORD=%s\n' "$TT_JDBC_URL" "$TT_APP_PASSWORD" >> "$GITHUB_ENV"
+      - name: Vérifier le déploiement HTTPS sur WildFly 42
+        env:
+          WILDFLY_VERSION: 42.0.0.Final
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/wildfly.zip"
+          base="https://repo.maven.apache.org/maven2/org/wildfly/wildfly-dist/$WILDFLY_VERSION"
+          curl --fail --silent --show-error --retry 3 "$base/wildfly-dist-$WILDFLY_VERSION.zip" -o "$archive"
+          echo "3162d4ce32d26cefdd814e6dfe53670645a78945cdd6a68b69e26bb127241fd6  $archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP"
+          server="$RUNNER_TEMP/wildfly-$WILDFLY_VERSION"
+          deployments="$server/standalone/deployments"
+          TT_TEST_AUDITEUR=$(openssl rand -hex 24)
+          TT_TEST_DESTINATAIRE=$(openssl rand -hex 24)
+          export TT_TEST_AUDITEUR TT_TEST_DESTINATAIRE
+          "$server/bin/add-user.sh" -s -a -u ci-auditeur -p "$TT_TEST_AUDITEUR" -g AUDITEUR >/dev/null
+          "$server/bin/add-user.sh" -s -a -u ci-destinataire -p "$TT_TEST_DESTINATAIRE" -g DESTINATAIRE >/dev/null
+          cp tupletrace-api/target/tupletrace.war "$deployments/"
+          cp db/target/wildfly-driver/postgresql.jar "$deployments/"
+          "$server/bin/standalone.sh" -b 127.0.0.1 > "$RUNNER_TEMP/wildfly.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in {1..120}; do
+            test ! -f "$deployments/tupletrace.war.failed"
+            test ! -f "$deployments/postgresql.jar.failed"
+            kill -0 "$pid"
+            if test -f "$deployments/tupletrace.war.deployed" && test -f "$deployments/postgresql.jar.deployed"; then break; fi
+            sleep 1
+          done
+          test -f "$deployments/tupletrace.war.deployed"
+          test -f "$deployments/postgresql.jar.deployed"
+          "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
+          "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
+          python3 ci/check-wildfly.py
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Installer Gitleaks pour Linux x64
+        env:
+          GITLEAKS_VERSION: '8.30.1'
+          # Empreinte de l'archive Linux x64 publiée dans gitleaks_8.30.1_checksums.txt.
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive" -o "$archive"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p gitleaks-bin
+          tar -xzf "$archive" -C gitleaks-bin gitleaks
+      - name: Gitleaks sur tout l'historique
+        run: '"$RUNNER_TEMP/gitleaks-bin/gitleaks" git --log-opts="--all" --redact=100 --exit-code=1 .'
+
+  sca:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.TT_SECURITY_ANALYSIS == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: OWASP Dependency-Check
+        run: |
+          sh ./mvnw -B -ntp -DskipTests install
+          sh ./mvnw -B -ntp org.owasp:dependency-check-maven:12.2.2:aggregate -DfailBuildOnCVSS=7
+
+  sast:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.TT_SECURITY_ANALYSIS == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: github/codeql-action/init@1a818fd5f97ed0ee9a823421bd5b171add01227f # v4.36.2
+        with:
+          languages: java-kotlin
+          build-mode: manual
+      - run: sh ./mvnw -B -ntp -DskipTests clean package
+      - uses: github/codeql-action/analyze@1a818fd5f97ed0ee9a823421bd5b171add01227f # v4.36.2
