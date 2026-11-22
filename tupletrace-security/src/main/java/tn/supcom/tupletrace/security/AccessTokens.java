@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 
 /** Services internes pour le périmètre des jetons d'accès de la plateforme. */
 public final class AccessTokens {
-    public record Identity(UUID subject, UUID tokenId, Instant expiresAt) {}
+    public record Identity(UUID subject, UUID tokenId, Instant expiresAt, UUID organization) {}
 
     private static final String SELECT = """
             SELECT key_id FROM tt.signing_key_version
@@ -38,12 +38,16 @@ public final class AccessTokens {
     }
 
     public String issue(UUID subject) throws SQLException, IOException, GeneralSecurityException {
+        return issue(subject, null);
+    }
+
+    public String issue(UUID subject, UUID organization) throws SQLException, IOException, GeneralSecurityException {
         Instant now = clock.instant();
         try (var connection = database.getConnection();
              var query = connection.prepareStatement(SELECT + "status='ACTIVE'"); var rows = query.executeQuery()) {
             if (!rows.next()) throw new IllegalStateException("No active access key");
             UUID kid = rows.getObject(1, UUID.class);
-            return profile.issue(subject, now, kid, keys.signingKey(kid));
+            return profile.issue(subject, organization, now, kid, keys.signingKey(kid));
         }
     }
 
@@ -56,7 +60,15 @@ public final class AccessTokens {
                 if (!rows.next()) throw TokenProfile.invalid();
             }
         }
-        return profile.verify(token, kid, keys.publicKey(kid), clock.instant());
+        var identity = profile.verify(token, kid, keys.publicKey(kid), clock.instant());
+        try (var connection = database.getConnection();
+             var query = connection.prepareStatement("SELECT 1 FROM tt.revoked_access_token WHERE token_id=?")) {
+            query.setObject(1, identity.tokenId());
+            try (var rows = query.executeQuery()) {
+                if (rows.next()) throw TokenProfile.invalid();
+            }
+        }
+        return identity;
     }
 
     public Map<String, List<Map<String, String>>> jwks() throws SQLException, IOException, GeneralSecurityException {

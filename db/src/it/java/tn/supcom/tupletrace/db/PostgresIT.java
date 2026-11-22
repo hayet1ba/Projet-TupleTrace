@@ -86,10 +86,10 @@ class PostgresIT {
 
     @Test
     void migratesEmptySchemaThenRevalidatesWithoutChanges() {
-        assertEquals(5, initialMigrations);
+        assertEquals(6, initialMigrations);
         flyway.validate();
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(5, flyway.info().applied().length);
+        assertEquals(6, flyway.info().applied().length);
     }
 
     @Test
@@ -114,7 +114,7 @@ class PostgresIT {
         try (var db = application()) {
             db.setAutoCommit(false);
             assertEquals("tt_app", scalar(db, "SELECT current_user"));
-            for (String table : new String[]{"organization", "app_user", "role_assignment", "signing_key_version"}) {
+            for (String table : new String[]{"organization", "app_user", "role_assignment", "signing_key_version", "revoked_access_token"}) {
                 scalar(db, "SELECT count(*) FROM tt." + table);
                 expectSqlState(db, "42501", "DELETE FROM tt." + table);
                 expectSqlState(db, "42501", "INSERT INTO tt." + table + " DEFAULT VALUES");

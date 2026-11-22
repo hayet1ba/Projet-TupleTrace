@@ -127,6 +127,14 @@
                   </artifactItems>
                 </configuration>
               </execution>
+              <execution>
+                <id>account-api-test-classpath</id>
+                <phase>pre-integration-test</phase>
+                <goals><goal>build-classpath</goal></goals>
+                <configuration>
+                  <outputFile>${project.build.directory}/account-api-classpath</outputFile>
+                </configuration>
+              </execution>
             </executions>
           </plugin>
         </plugins>
