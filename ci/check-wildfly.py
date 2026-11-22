@@ -37,6 +37,18 @@ def main():
                 for k, v in headers), "Type de contenu inattendu")
     print("GET /api/health public en HTTPS : 200")
 
+    if "TT_EXPECTED_KID" in os.environ:
+        status, headers, body = https("GET", "/api/.well-known/jwks.json")
+        require(status == 200, f"GET JWKS : {status}")
+        document = json.loads(body)
+        require(set(document) == {"keys"} and len(document["keys"]) == 1, "Structure JWKS inattendue")
+        key = document["keys"][0]
+        require(set(key) == {"kid", "kty", "crv", "x"} and key["kid"] == os.environ["TT_EXPECTED_KID"]
+                and key["kty"] == "OKP" and key["crv"] == "Ed25519"
+                and len(base64.urlsafe_b64decode(key["x"] + "=")) == 32, "Clé publique inattendue")
+        require(any(k.lower() == "cache-control" and "no-store" in v for k, v in headers), "Cache JWKS")
+        print("GET JWKS en HTTPS : 200, clé publique Ed25519 attendue")
+
     for headers in ({}, {"Authorization": "Bearer invalid"}):
         status, _, _ = https("GET", "/api/private", headers)
         require(status == 401, f"GET /api/private : {status}, attendu 401")

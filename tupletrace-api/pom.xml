@@ -43,5 +43,14 @@
 
   <build>
     <finalName>tupletrace</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-war-plugin</artifactId>
+        <configuration>
+          <packagingExcludes>%regex[(?i).*\.(p12|pfx|pkcs12|jks|jceks|keystore|bks|bcfks|key|pk8|pkcs8|ppk)]</packagingExcludes>
+        </configuration>
+      </plugin>
+    </plugins>
   </build>
 </project>

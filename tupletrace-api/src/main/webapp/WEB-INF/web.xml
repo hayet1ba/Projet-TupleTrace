@@ -29,6 +29,14 @@
     <auth-constraint><role-name>AUDITEUR</role-name></auth-constraint>
     <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
   </security-constraint>
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>Clés publiques des jetons d'accès</web-resource-name>
+      <url-pattern>/api/.well-known/jwks.json</url-pattern>
+      <http-method>GET</http-method>
+    </web-resource-collection>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
   <login-config>
     <auth-method>BASIC</auth-method>
     <realm-name>ApplicationRealm</realm-name>
