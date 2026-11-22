@@ -17,6 +17,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import tn.supcom.tupletrace.security.AccessTokens;
 import tn.supcom.tupletrace.security.PasswordAccounts;
+import tn.supcom.tupletrace.security.TotpFactor;
 
 import javax.sql.DataSource;
 import java.io.*;
@@ -52,7 +53,13 @@ public class LoginResource {
             if (check.status() != PasswordAccounts.Status.VERIFIED) return response(401).build();
             var membership = directory.active(check.userId());
             if (membership == null) return response(401).build();
-            String token = tokens.issue(membership.user(), membership.organization());
+            TotpFactor.Proof proof = null;
+            if (membership.privileged() || membership.factor() != null || fields.containsKey("otp")) {
+                if (!fields.containsKey("otp")) return response(202).entity(Map.of("next", "totp")).build();
+                proof = TotpFactor.verify(database, membership.user(), membership.organization(), fields.get("otp"));
+                if (proof == null) return response(401).build();
+            }
+            String token = tokens.issue(membership.user(), membership.organization(), proof);
             return response(200).entity(Map.of("access_token", token, "token_type", "Bearer")).build();
         } catch (SQLException | IOException | GeneralSecurityException | IllegalStateException unavailable) {
             return response(503).build();
@@ -73,10 +80,10 @@ public class LoginResource {
             for (var event = parser.next(); event != JsonParser.Event.END_OBJECT; event = parser.next()) {
                 if (event != JsonParser.Event.KEY_NAME) return null;
                 String name = parser.getString();
-                if (!(name.equals("email") || name.equals("password")) || parser.next() != JsonParser.Event.VALUE_STRING
+                if (!(name.equals("email") || name.equals("password") || name.equals("otp")) || parser.next() != JsonParser.Event.VALUE_STRING
                         || fields.putIfAbsent(name, parser.getString()) != null) return null;
             }
-            return fields.size() == 2 && !parser.hasNext() ? fields : null;
+            return fields.keySet().containsAll(Set.of("email", "password")) && !parser.hasNext() ? fields : null;
         } catch (JsonException | NoSuchElementException invalid) {
             return null;
         }

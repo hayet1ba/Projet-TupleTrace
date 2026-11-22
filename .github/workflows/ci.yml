@@ -48,6 +48,8 @@ jobs:
           echo "::add-mask::$TT_KEYSTORE_PASSWORD"
           export TT_KEYSTORE_PASSWORD
           install -d -m 700 "$TT_KEY_DIR"
+          (umask 077; keytool -genseckey -alias tt-totp -keyalg AES -keysize 256 -storetype PKCS12 \
+            -keystore "$TT_KEY_DIR/totp.p12" -storepass:env TT_KEYSTORE_PASSWORD)
           kid=$(PGHOST=127.0.0.1 PGDATABASE="$TT_DATABASE" python3 ops/keys/manage.py rotate)
           export TT_EXPECTED_KID="$kid"
           export -n TT_MIGRATION_PASSWORD

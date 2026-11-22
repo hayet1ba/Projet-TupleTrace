@@ -1,12 +1,13 @@
-# Premier facteur des comptes TupleTrace
+# Authentification des comptes TupleTrace
 
 ## Connexion et accès HTTPS
 
-`POST /api/auth/login` accepte un objet JSON de 8 192 octets au plus, avec exactement deux chaînes, `email` et `password`. Les doublons et les champs supplémentaires sont refusés. Fournir les identifiants dans le corps HTTPS. L'origine utilisée par le limiteur est celle du pair réseau observé par Undertow. Éviter toute journalisation des corps de connexion et de l'en-tête Authorization dans un proxy ou une sonde.
+`POST /api/auth/login` accepte un objet JSON de 8 192 octets au plus, avec deux chaînes obligatoires, `email` et `password`, et une chaîne facultative `otp`. Les doublons et les champs supplémentaires sont refusés. Fournir les identifiants dans le corps HTTPS. L'origine utilisée par le limiteur est celle du pair réseau observé par Undertow. Éviter toute journalisation des corps de connexion et de l'en-tête Authorization dans un proxy ou une sonde.
 
 | Résultat | HTTP |
 | --- | --- |
-| Premier facteur accepté, compte et organisation actifs | 200, objet JSON contenant `access_token` et `token_type=Bearer` |
+| Facteurs requis acceptés, compte et organisation actifs | 200, objet JSON contenant `access_token` et `token_type=Bearer` |
+| Mot de passe correct, second facteur requis | 202, `{"next":"totp"}`, sans jeton |
 | Mauvais identifiants, compte indisponible ou délai du compte | 401, même réponse |
 | Limite par origine ou capacité de hachage atteinte | 429 |
 | JSON incorrect, corps trop grand ou média incompatible | 400, 413 ou 415 |
@@ -14,11 +15,36 @@
 
 Les réponses de connexion portent `Cache-Control: no-store`. Transmettre le jeton dans `Authorization: Bearer …` sur HTTPS. Pour un client navigateur, le garder uniquement en mémoire. Le jeton signé lie le sujet à l'UUID de son organisation pour 15 minutes au plus. Les rôles sont relus dans PostgreSQL. Un transfert d'organisation exige une nouvelle connexion.
 
-Appliquer les migrations jusqu'à V6, déployer le pilote JDBC et configurer la datasource, puis exécuter `ops/wildfly/authentication.cli` **avant** de déployer le WAR. Ce script configure les mappings Undertow et EJB du domaine dédié TupleTrace. Le mécanisme Jakarta Security vérifie le PASETO, la clé, le `jti` et l'appartenance active. Elytron résout le principal auprès du realm JDBC et fournit les rôles au conteneur. `GET /api/organizations/{uuid}` exige le rôle AUDITEUR et limite la lecture à l'organisation du compte. Un rôle insuffisant donne 403 et une autre organisation donne 404.
+Appliquer les migrations jusqu'à V7, déployer le pilote JDBC et configurer la datasource, puis exécuter `ops/wildfly/authentication.cli` **avant** de déployer le WAR. Sur une installation existante, recharger WildFly si la CLI signale `reload-required`. Ce script configure les mappings Undertow et EJB du domaine dédié TupleTrace. Le mécanisme Jakarta Security vérifie le PASETO, la clé, le `jti` et l'appartenance active. Une seule requête PostgreSQL lit les rôles, le compte, son organisation et le facteur. Le mécanisme fournit ces groupes au conteneur via Jakarta Security. Undertow et les EJB appliquent leurs contraintes avec cette identité. `GET /api/organizations/{uuid}` exige le rôle AUDITEUR et limite la lecture à l'organisation du compte. Un rôle insuffisant donne 403 et une autre organisation donne 404.
 
-La révocation individuelle consiste à inscrire le `jti` vérifié et son expiration signée dans `tt.revoked_access_token` avec une identité d'exploitation autorisée. Les vérifications suivantes consultent cette table. L'opérateur peut purger les entrées après expiration. La révocation d'une clé conserve son effet sur tous ses jetons. `tt_app` a uniquement le droit SELECT sur la liste des révocations.
+`POST /api/auth/logout` révoque le `jti` vérifié jusqu'à son expiration et renvoie 204. Sa réutilisation reçoit 401. L'opérateur peut purger les entrées expirées. Les requêtes Bearer sont traitées par Jakarta Security. Les anciens comptes BASIC du realm WildFly ne donnent plus accès à l'API.
 
-Pendant la transition, les anciens comptes du realm WildFly conservent BASIC sur `GET /api/private`. Ils ne peuvent ni obtenir un jeton à ce titre ni accéder aux ressources d'organisation. Le retrait de cette branche de compatibilité et du realm historique pourra suivre la migration des consommateurs et la validation en environnement cible.
+## Second facteur et réauthentification
+
+SR-AUT-02 impose un TOTP aux rôles PROPRIETAIRE, ADMINISTRATEUR et AUDITEUR. Un compte ayant déjà un facteur en attente ou confirmé doit également présenter son code. À réception de 202, soumettre un nouveau POST de connexion avec le courriel, le mot de passe et le code à six chiffres. Le serveur revérifie les identifiants, le compte et l'organisation. Une promotion prend effet sur les jetons déjà émis. La signature PASETO couvre `amr=["pwd","otp"]`, `factor_id` et `auth_time`. Seule la confirmation atomique dans PostgreSQL fournit cette date.
+
+L'authentificateur utilise HMAC-SHA-1, six chiffres et des périodes UTC de 30 secondes. Synchroniser les horloges de PostgreSQL, de WildFly et des authentificateurs. Le serveur admet les périodes précédente, courante et suivante. Un compteur accepté est consommé pour ce facteur sur toutes les instances. Cinq essais numériques infructueux par facteur dans une fenêtre de cinq minutes épuisent son quota. Un code accepté remet le compteur d'échecs à zéro. [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)
+
+### Enrôlement d'un authentificateur prépersonnalisé
+
+Sur la station de provisionnement de confiance, vérifier l'identité du titulaire et le rattachement de son authentificateur au compte. Personnaliser le dispositif hors bande avec une graine aléatoire unique de 160 bits issue d'un générateur cryptographique. Utiliser un canal de provisionnement sécurisé. Le navigateur, la messagerie et les réponses REST ne transportent jamais cette graine.
+
+Créer **une fois** la clé de chiffrement dédiée, dans le répertoire protégé et persistant `TT_KEY_DIR`, en utilisant le mot de passe injecté par le gestionnaire de secrets. Réserver l'accès en lecture aux identités WildFly et de provisionnement. En environnement multi-instance, distribuer la même clé par le canal d'exploitation sécurisé. Sauvegarder le magasin chiffré séparément de PostgreSQL. Conserver cette clé entre les redémarrages. Son remplacement exigera de rechiffrer les graines existantes ou de réenrôler les titulaires.
+
+```sh
+(umask 077; keytool -genseckey -alias tt-totp -keyalg AES -keysize 256 -storetype PKCS12 \
+  -keystore "$TT_KEY_DIR/totp.p12" -storepass:env TT_KEYSTORE_PASSWORD)
+```
+
+Après le build du profil `postgres-it`, depuis la racine du projet, exécuter la commande ci-dessous sur cette station. Fournir `TT_JDBC_URL`, `TT_MIGRATION_PASSWORD`, `TT_KEY_DIR` et `TT_KEYSTORE_PASSWORD` depuis le stockage sécurisé. Utiliser une connexion PostgreSQL locale protégée ou TLS avec validation du serveur. Sous Windows, remplacer le séparateur de classpath `:` par `;`.
+
+```sh
+java --class-path "tupletrace-api/target/tupletrace/WEB-INF/lib/*:db/target/wildfly-driver/postgresql.jar" ops/accounts/EnrollTotp.java "$ACCOUNT_UUID"
+```
+
+Saisir la graine en Base32 majuscule dans la console sans écho. L'import refuse de remplacer un facteur existant. V7 conserve le chiffré AES-256-GCM avec un nonce aléatoire de 96 bits et lie son intégrité aux UUID du compte et du facteur. La première connexion avec un TOTP valable confirme l'enrôlement. Le compte SQL applicatif ne peut ni inscrire un facteur ni modifier son compteur par écriture directe.
+
+`POST /api/auth/factor/revoke` agit exclusivement sur le facteur du porteur. PostgreSQL vérifie que ce facteur est toujours actif et que la preuve forte a au plus cinq minutes au moment de la suppression. Un jeton encore valide mais trop ancien reçoit 403. Pour renouveler cette preuve, refaire la connexion avec le mot de passe et un nouveau TOTP. La suppression rend inutilisables les jetons liés à cet enrôlement. Un compte privilégié doit être réenrôlé pour retrouver l'accès. Les futurs endpoints critiques devront imposer la même vérification au moment de leur opération. Les codes de récupération et la procédure de remplacement d'un authentificateur perdu restent à définir.
 
 ## Évolution vers OAuth
 
@@ -46,7 +72,7 @@ Les seuils par compte et par adresse reprennent SR-AUT-03 et le §6.1. Leur rég
 
 ## Demande de SHA3-224 côté client
 
-La demande de préhachage vient de la consigne du professeur rapportée pour ce lot. Les documents versionnés consultés prescrivent Argon2id. Le service de cette étape traite le mot de passe directement. BASIC sur HTTPS et les endpoints existants continuent de fonctionner.
+La demande de préhachage vient de la consigne du professeur rapportée pour ce lot. Les documents versionnés consultés prescrivent Argon2id. Le service de cette étape traite le mot de passe directement.
 
 Un SHA3-224 déterministe transmis tel quel devient un secret de connexion réutilisable. Celui qui obtient cette valeur pourrait la présenter au serveur, et comparer hors ligne des hypothèses à ce condensat rapide. TLS reste nécessaire. Un script compromis dans le navigateur peut lire la saisie avant le calcul. Un condensat seul empêche aussi le serveur de vérifier la longueur du mot de passe d'origine.
 

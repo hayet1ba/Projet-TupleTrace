@@ -86,10 +86,10 @@ class PostgresIT {
 
     @Test
     void migratesEmptySchemaThenRevalidatesWithoutChanges() {
-        assertEquals(6, initialMigrations);
+        assertEquals(7, initialMigrations);
         flyway.validate();
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(6, flyway.info().applied().length);
+        assertEquals(7, flyway.info().applied().length);
     }
 
     @Test
@@ -120,6 +120,8 @@ class PostgresIT {
                 expectSqlState(db, "42501", "INSERT INTO tt." + table + " DEFAULT VALUES");
             }
             for (String sql : new String[]{
+                    "SELECT * FROM tt.totp_factor", "UPDATE tt.totp_factor SET last_step=NULL",
+                    "DELETE FROM tt.totp_status", "INSERT INTO tt.totp_factor DEFAULT VALUES",
                     "SELECT * FROM tt.password_credential", "INSERT INTO tt.password_credential DEFAULT VALUES",
                     "UPDATE tt.password_credential SET verifier=salt", "DELETE FROM tt.login_failure",
                     "CREATE SCHEMA unexpected", "CREATE TABLE tt.unexpected(id int)",
