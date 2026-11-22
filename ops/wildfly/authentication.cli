@@ -1,0 +1,15 @@
+if (outcome != success) of /subsystem=elytron/jdbc-realm=TupleTraceAccounts:read-resource
+    /subsystem=elytron/jdbc-realm=TupleTraceAccounts:add(principal-query=[{data-source=TupleTraceDS,sql="WITH principal AS (SELECT string_to_array(?, ':') AS parts) SELECT coalesce(r.role_name, 'AUTHENTICATED_ACCOUNT') FROM principal JOIN tt.app_user u ON u.id=(parts)[2]::uuid JOIN tt.organization o ON o.id=u.organization_id AND o.id=(parts)[3]::uuid LEFT JOIN tt.role_assignment r ON r.user_id=u.id AND r.organization_id=o.id WHERE (parts)[1]='account' AND u.status='ACTIVE' AND o.status='ACTIVE'",attribute-mapping=[{index=1,to=groups}]}])
+end-if
+if (outcome != success) of /subsystem=elytron/distributed-realm=TupleTraceRealms:read-resource
+    /subsystem=elytron/distributed-realm=TupleTraceRealms:add(realms=[TupleTraceAccounts,ApplicationRealm])
+end-if
+if (outcome != success) of /subsystem=elytron/security-domain=TupleTraceDomain:read-resource
+    /subsystem=elytron/security-domain=TupleTraceDomain:add(default-realm=TupleTraceRealms,permission-mapper=default-permission-mapper,realms=[{realm=TupleTraceRealms,role-decoder=groups-to-roles}])
+end-if
+if (outcome != success) of /subsystem=undertow/application-security-domain=TupleTrace:read-resource
+    /subsystem=undertow/application-security-domain=TupleTrace:add(security-domain=TupleTraceDomain,integrated-jaspi=true)
+end-if
+if (outcome != success) of /subsystem=ejb3/application-security-domain=TupleTrace:read-resource
+    /subsystem=ejb3/application-security-domain=TupleTrace:add(security-domain=TupleTraceDomain)
+end-if

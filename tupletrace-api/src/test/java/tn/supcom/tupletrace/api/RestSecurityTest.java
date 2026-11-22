@@ -6,6 +6,7 @@ import jakarta.annotation.security.DenyAll;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.HttpMethod;
 import jakarta.ws.rs.Path;
 import org.junit.jupiter.api.Test;
@@ -55,11 +56,12 @@ class RestSecurityTest {
         }
         if (permitAll) {
             var publicRoutes = Map.of(HealthResource.class, "/health#health",
-                    JwksResource.class, "/.well-known/jwks.json#publicKeys");
+                    JwksResource.class, "/.well-known/jwks.json#publicKeys",
+                    LoginResource.class, "/auth/login#login");
             var resource = method.getDeclaringClass();
             assertTrue(publicRoutes.containsKey(resource), method.toString());
             assertEquals(publicRoutes.get(resource), resource.getAnnotation(Path.class).value() + "#" + method.getName());
-            assertTrue(method.isAnnotationPresent(GET.class));
+            assertTrue(method.isAnnotationPresent(resource == LoginResource.class ? POST.class : GET.class));
             assertFalse(method.isAnnotationPresent(Path.class));
         }
     }

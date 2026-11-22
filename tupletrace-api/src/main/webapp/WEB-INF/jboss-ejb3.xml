@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jboss:ejb-jar xmlns:jboss="http://www.jboss.com/xml/ns/javaee"
+               xmlns="https://jakarta.ee/xml/ns/jakartaee" xmlns:s="urn:security:1.1" version="4.0">
+  <assembly-descriptor>
+    <s:security><ejb-name>*</ejb-name><s:security-domain>TupleTrace</s:security-domain></s:security>
+  </assembly-descriptor>
+</jboss:ejb-jar>
