@@ -64,6 +64,23 @@ class TokenProfileTest {
         assertThrows(IllegalArgumentException.class, () -> profile.verify(token, kid, publicKey(), NOW));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"amr", "auth_time", "factor_id", "org", "future", "methods"})
+    void rejectsIncompleteOrInconsistentStrongAuthentication(String mutation) throws Exception {
+        var claims = Json.createObjectBuilder().add("iss", "issuer").add("aud", "audience")
+                .add("sub", sub.toString()).add("jti", UUID.randomUUID().toString())
+                .add("iat", NOW.toString()).add("nbf", NOW.toString()).add("exp", NOW.plusSeconds(60).toString())
+                .add("org", UUID.randomUUID().toString()).add("factor_id", UUID.randomUUID().toString())
+                .add("amr", Json.createArrayBuilder().add("pwd").add("otp")).add("auth_time", NOW.toString());
+        switch (mutation) {
+            case "future" -> claims.add("auth_time", NOW.plusSeconds(10).toString());
+            case "methods" -> claims.add("amr", "otp");
+            default -> claims.remove(mutation);
+        }
+        var token = V4Public.sign(privateKey(), claims.build().toString(), "{\"kid\":\"" + kid + "\"}");
+        assertThrows(IllegalArgumentException.class, () -> profile.verify(token, kid, publicKey(), NOW));
+    }
+
     @Test
     void verifiesAllThreeOfficialPublicVectors() throws Exception {
         try (var reader = Json.createReader(getClass().getResourceAsStream("/paseto-vectors/public.json"))) {

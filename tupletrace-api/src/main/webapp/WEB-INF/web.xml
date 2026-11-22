@@ -52,10 +52,17 @@
     <auth-constraint><role-name>**</role-name></auth-constraint>
     <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
   </security-constraint>
-  <login-config>
-    <auth-method>BASIC</auth-method>
-    <realm-name>ApplicationRealm</realm-name>
-  </login-config>
+  <security-constraint>
+    <web-resource-collection>
+      <web-resource-name>Session du compte</web-resource-name>
+      <url-pattern>/api/auth/logout</url-pattern>
+      <url-pattern>/api/auth/factor/revoke</url-pattern>
+      <http-method>POST</http-method>
+    </web-resource-collection>
+    <auth-constraint><role-name>**</role-name></auth-constraint>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
+  <security-role><role-name>AUTHENTICATED_ACCOUNT</role-name></security-role>
   <security-role><role-name>AUDITEUR</role-name></security-role>
   <deny-uncovered-http-methods/>
 </web-app>
