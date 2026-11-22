@@ -4,7 +4,9 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -82,10 +84,10 @@ class PostgresIT {
 
     @Test
     void migratesEmptySchemaThenRevalidatesWithoutChanges() {
-        assertEquals(3, initialMigrations);
+        assertEquals(4, initialMigrations);
         flyway.validate();
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(3, flyway.info().applied().length);
+        assertEquals(4, flyway.info().applied().length);
     }
 
     @Test
@@ -119,12 +121,22 @@ class PostgresIT {
                     "CREATE SCHEMA unexpected", "CREATE TABLE tt.unexpected(id int)",
                     "CREATE TABLE public.unexpected(id int)", "SET ROLE tt_migrator",
                     "SET ROLE tt_audit_reader", "UPDATE tt.organization SET status = 'ACTIVE'",
+                    "SELECT tt.rotate_access_key(NULL,gen_random_uuid())",
+                    "SELECT tt.revoke_access_key(gen_random_uuid())",
+                    "UPDATE tt.signing_key_version SET status='REVOKED'",
                     "SELECT * FROM tt.flyway_schema_history", "DELETE FROM tt.flyway_schema_history",
                     "SELECT * FROM tt.audit_event", "INSERT INTO tt.audit_event DEFAULT VALUES",
                     "UPDATE tt.audit_event SET event_type = 'OTHER'", "TRUNCATE tt.audit_event"}) {
                 expectSqlState(db, "42501", sql);
             }
             db.rollback();
+        }
+    }
+
+    @Test
+    void accessKeyLifecycle(@TempDir Path store) throws Exception {
+        try (var admin = migrator()) {
+            AccessKeyScenario.check(url, appPassword, store, admin);
         }
     }
 
@@ -136,7 +148,7 @@ class PostgresIT {
                     "VALUES ('ACCESS_TOKEN',?,?,'ACTIVE')";
             execute(db, insert, 1, "access-v1");
             expectSqlState(db, "23505", insert, 2, "access-v2");
-            execute(db, "UPDATE tt.signing_key_version SET status='RETIRED' WHERE purpose='ACCESS_TOKEN'");
+            execute(db, "UPDATE tt.signing_key_version SET status='REVOKED' WHERE purpose='ACCESS_TOKEN'");
             execute(db, insert, 2, "access-v2");
             db.rollback();
         }

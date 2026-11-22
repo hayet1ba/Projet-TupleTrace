@@ -54,9 +54,11 @@ class RestSecurityTest {
                     method.toString());
         }
         if (permitAll) {
-            assertEquals(HealthResource.class, method.getDeclaringClass(), method.toString());
-            assertEquals("health", method.getName());
-            assertEquals("/health", HealthResource.class.getAnnotation(Path.class).value());
+            var publicRoutes = Map.of(HealthResource.class, "/health#health",
+                    JwksResource.class, "/.well-known/jwks.json#publicKeys");
+            var resource = method.getDeclaringClass();
+            assertTrue(publicRoutes.containsKey(resource), method.toString());
+            assertEquals(publicRoutes.get(resource), resource.getAnnotation(Path.class).value() + "#" + method.getName());
             assertTrue(method.isAnnotationPresent(GET.class));
             assertFalse(method.isAnnotationPresent(Path.class));
         }

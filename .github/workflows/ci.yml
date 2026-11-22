@@ -38,10 +38,21 @@ jobs:
           docker compose -p tupletrace-ci -f ops/postgres/compose.yaml up -d --wait --wait-timeout 120
           unset POSTGRES_PASSWORD
           sh ./mvnw -B -ntp -Ppostgres-it clean verify
+          python3 -B -m unittest discover -s ci -p 'test_check_war.py'
+          python3 ci/check_war.py tupletrace-api/target/tupletrace.war
+          export TT_KEY_DIR="$RUNNER_TEMP/paseto-keys"
+          TT_KEYSTORE_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$TT_KEYSTORE_PASSWORD"
+          export TT_KEYSTORE_PASSWORD
+          install -d -m 700 "$TT_KEY_DIR"
+          kid=$(PGHOST=127.0.0.1 PGDATABASE="$TT_DATABASE" python3 ops/keys/manage.py rotate)
+          printf 'TT_KEY_DIR=%s\nTT_KEYSTORE_PASSWORD=%s\nTT_EXPECTED_KID=%s\n' "$TT_KEY_DIR" "$TT_KEYSTORE_PASSWORD" "$kid" >> "$GITHUB_ENV"
           printf 'TT_JDBC_URL=%s\nTT_APP_PASSWORD=%s\n' "$TT_JDBC_URL" "$TT_APP_PASSWORD" >> "$GITHUB_ENV"
       - name: Vérifier le déploiement HTTPS sur WildFly 42
         env:
           WILDFLY_VERSION: 42.0.0.Final
+          TT_TOKEN_ISSUER: tupletrace-ci
+          TT_TOKEN_AUDIENCE: tupletrace-api
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/wildfly.zip"
@@ -53,9 +64,14 @@ jobs:
           deployments="$server/standalone/deployments"
           TT_TEST_AUDITEUR=$(openssl rand -hex 24)
           TT_TEST_DESTINATAIRE=$(openssl rand -hex 24)
-          export TT_TEST_AUDITEUR TT_TEST_DESTINATAIRE
-          "$server/bin/add-user.sh" -s -a -u ci-auditeur -p "$TT_TEST_AUDITEUR" -g AUDITEUR >/dev/null
-          "$server/bin/add-user.sh" -s -a -u ci-destinataire -p "$TT_TEST_DESTINATAIRE" -g DESTINATAIRE >/dev/null
+          echo "::add-mask::$TT_TEST_AUDITEUR"
+          echo "::add-mask::$TT_TEST_DESTINATAIRE"
+          with_test_accounts() {
+            TT_TEST_AUDITEUR="$TT_TEST_AUDITEUR" TT_TEST_DESTINATAIRE="$TT_TEST_DESTINATAIRE" python3 "$@"
+          }
+          with_test_accounts ci/init-test-accounts.py "$server/standalone/configuration"
+          export TT_PROBE_DIR="$RUNNER_TEMP/token-probe"
+          install -d -m 700 "$TT_PROBE_DIR"
           cp tupletrace-api/target/tupletrace.war "$deployments/"
           cp db/target/wildfly-driver/postgresql.jar "$deployments/"
           "$server/bin/standalone.sh" -b 127.0.0.1 > "$RUNNER_TEMP/wildfly.log" 2>&1 &
@@ -72,7 +88,23 @@ jobs:
           test -f "$deployments/postgresql.jar.deployed"
           "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
           "$server/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
-          python3 ci/check-wildfly.py
+          with_test_accounts ci/check-wildfly.py
+          printf 'Dependencies: deployment.tupletrace.war\n' > "$RUNNER_TEMP/probe.mf"
+          jar --create --file "$RUNNER_TEMP/probe.jar" --manifest "$RUNNER_TEMP/probe.mf" \
+            -C tupletrace-api/target/test-classes tn/supcom/tupletrace/probe
+          "$server/bin/jboss-cli.sh" --connect --command="deploy $RUNNER_TEMP/probe.jar"
+          test -s "$TT_PROBE_DIR/access-token"
+          "$server/bin/jboss-cli.sh" --connect --command=:shutdown
+          wait "$pid"
+          "$server/bin/standalone.sh" -b 127.0.0.1 > "$RUNNER_TEMP/wildfly-restart.log" 2>&1 &
+          pid=$!
+          for attempt in {1..120}; do
+            kill -0 "$pid"
+            if test -f "$TT_PROBE_DIR/verified"; then break; fi
+            sleep 1
+          done
+          test -f "$TT_PROBE_DIR/verified"
+          with_test_accounts ci/check-wildfly.py
 
   secrets:
     runs-on: ubuntu-latest
