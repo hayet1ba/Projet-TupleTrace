@@ -86,10 +86,10 @@ class PostgresIT {
 
     @Test
     void migratesEmptySchemaThenRevalidatesWithoutChanges() {
-        assertEquals(7, initialMigrations);
+        assertEquals(8, initialMigrations);
         flyway.validate();
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(7, flyway.info().applied().length);
+        assertEquals(8, flyway.info().applied().length);
     }
 
     @Test
@@ -120,6 +120,7 @@ class PostgresIT {
                 expectSqlState(db, "42501", "INSERT INTO tt." + table + " DEFAULT VALUES");
             }
             for (String sql : new String[]{
+                    "UPDATE tt.role_assignment SET role_name='AUDITEUR'", "TRUNCATE tt.role_assignment",
                     "SELECT * FROM tt.totp_factor", "UPDATE tt.totp_factor SET last_step=NULL",
                     "DELETE FROM tt.totp_status", "INSERT INTO tt.totp_factor DEFAULT VALUES",
                     "SELECT * FROM tt.password_credential", "INSERT INTO tt.password_credential DEFAULT VALUES",
@@ -131,6 +132,7 @@ class PostgresIT {
                     "SELECT tt.revoke_access_key(gen_random_uuid())",
                     "UPDATE tt.signing_key_version SET status='REVOKED'",
                     "SELECT * FROM tt.flyway_schema_history", "DELETE FROM tt.flyway_schema_history",
+                    "DELETE FROM tt.audit_event",
                     "SELECT * FROM tt.audit_event", "INSERT INTO tt.audit_event DEFAULT VALUES",
                     "UPDATE tt.audit_event SET event_type = 'OTHER'", "TRUNCATE tt.audit_event"}) {
                 expectSqlState(db, "42501", sql);
@@ -177,8 +179,28 @@ class PostgresIT {
             db.setAutoCommit(false);
             assertEquals("t", scalar(db, "SELECT has_table_privilege('tt_audit_reader','tt.audit_event','SELECT')"));
             assertEquals("f", scalar(db, "SELECT has_table_privilege('tt_audit_reader','tt.audit_event','INSERT,UPDATE,DELETE,TRUNCATE')"));
+            assertEquals("f", scalar(db, "SELECT has_function_privilege('tt_audit_reader',"
+                    + "'tt.append_audit_event(uuid,uuid,text,uuid,uuid)','EXECUTE')"));
+            expectSqlState(db, "55000", "UPDATE tt.audit_event SET target_id=NULL");
             expectSqlState(db, "55000", "DELETE FROM tt.audit_event");
             expectSqlState(db, "55000", "TRUNCATE tt.audit_event");
+            db.rollback();
+        }
+    }
+
+    @Test
+    void auditPreservesTheActorsOrganizationAtTheTimeOfTheEvent() throws SQLException {
+        try (var db = migrator()) {
+            db.setAutoCommit(false);
+            var original = scalar(db, "INSERT INTO tt.organization(name) VALUES ('A') RETURNING id");
+            var other = scalar(db, "INSERT INTO tt.organization(name) VALUES ('B') RETURNING id");
+            var actor = scalar(db, "INSERT INTO tt.app_user(organization_id,email) VALUES (?::uuid,'audit@example.invalid') RETURNING id", original);
+            String append = "SELECT tt.append_audit_event(?::uuid,?::uuid,'IAM_LOGOUT',gen_random_uuid(),NULL)";
+            expectSqlState(db, "23503", append, other, actor);
+            execute(db, append, original, actor);
+            execute(db, "UPDATE tt.app_user SET organization_id=?::uuid WHERE id=?::uuid", other, actor);
+            expectSqlState(db, "23503", append, original, actor);
+            assertEquals(original, scalar(db, "SELECT organization_id FROM tt.audit_event WHERE actor_id=?::uuid", actor));
             db.rollback();
         }
     }

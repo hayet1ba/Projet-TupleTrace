@@ -15,9 +15,15 @@
 
 Les réponses de connexion portent `Cache-Control: no-store`. Transmettre le jeton dans `Authorization: Bearer …` sur HTTPS. Pour un client navigateur, le garder uniquement en mémoire. Le jeton signé lie le sujet à l'UUID de son organisation pour 15 minutes au plus. Les rôles sont relus dans PostgreSQL. Un transfert d'organisation exige une nouvelle connexion.
 
-Appliquer les migrations jusqu'à V7, déployer le pilote JDBC et configurer la datasource, puis exécuter `ops/wildfly/authentication.cli` **avant** de déployer le WAR. Sur une installation existante, recharger WildFly si la CLI signale `reload-required`. Ce script configure les mappings Undertow et EJB du domaine dédié TupleTrace. Le mécanisme Jakarta Security vérifie le PASETO, la clé, le `jti` et l'appartenance active. Une seule requête PostgreSQL lit les rôles, le compte, son organisation et le facteur. Le mécanisme fournit ces groupes au conteneur via Jakarta Security. Undertow et les EJB appliquent leurs contraintes avec cette identité. `GET /api/organizations/{uuid}` exige le rôle AUDITEUR et limite la lecture à l'organisation du compte. Un rôle insuffisant donne 403 et une autre organisation donne 404.
+Appliquer les migrations jusqu'à V8, déployer le pilote JDBC et configurer la datasource, puis exécuter `ops/wildfly/authentication.cli` **avant** de déployer le WAR. Sur une installation existante, recharger WildFly si la CLI signale `reload-required`. Ce script configure les mappings Undertow et EJB du domaine dédié TupleTrace. Le mécanisme Jakarta Security vérifie le PASETO, la clé, le `jti` et l'appartenance active. Une seule requête PostgreSQL lit les rôles, le compte, son organisation et le facteur. Le mécanisme fournit ces groupes au conteneur via Jakarta Security. Undertow et les EJB appliquent leurs contraintes avec cette identité. `GET /api/organizations/{uuid}` exige le rôle AUDITEUR et limite la lecture à l'organisation du compte. Un rôle insuffisant donne 403 et une autre organisation donne 404.
 
 `POST /api/auth/logout` révoque le `jti` vérifié jusqu'à son expiration et renvoie 204. Sa réutilisation reçoit 401. L'opérateur peut purger les entrées expirées. Les requêtes Bearer sont traitées par Jakarta Security. Les anciens comptes BASIC du realm WildFly ne donnent plus accès à l'API.
+
+## Autorisations et journal IAM
+
+Pour un compte authentifié, une organisation étrangère ou inconnue donne la même réponse 404 vide, y compris si le rôle AUDITEUR manque. Pour sa propre organisation, l'EJB vérifie AUDITEUR et renvoie 403 si ce rôle manque. La déconnexion et le retrait du facteur utilisent exclusivement le compte, le jeton et le facteur de l'identité vérifiée.
+
+Les refus d'autorisation REST des comptes authentifiés, les refus de périmètre, la déconnexion et la révocation du facteur alimentent le journal chaîné. L'en-tête `X-Correlation-ID` permet de retrouver l'événement. Pour les deux mutations, le changement et l'écriture d'audit sont validés dans la même transaction. V8 vérifie l'organisation de l'acteur à l'ajout de l'événement. Un transfert ultérieur du compte conserve cet historique.
 
 ## Second facteur et réauthentification
 

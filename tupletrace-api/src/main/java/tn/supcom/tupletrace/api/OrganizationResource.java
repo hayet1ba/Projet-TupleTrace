@@ -14,6 +14,7 @@ import java.util.UUID;
 @Stateless
 @DenyAll
 @Path("/organizations")
+@OrganizationBound
 public class OrganizationResource {
     @GET
     @Path("/{organization}")
