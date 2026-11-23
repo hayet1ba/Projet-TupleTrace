@@ -31,7 +31,12 @@ public class AccountAuthentication implements HttpAuthenticationMechanism {
         if (!request.isSecure() || headers.hasMoreElements() || header.length() > 8200) return unauthorized(response);
         try {
             if (header.regionMatches(true, 0, "Bearer ", 0, 7)) {
-                var token = tokens.verify(header.substring(7));
+                AccessTokens.Identity token;
+                try {
+                    token = tokens.verify(header.substring(7));
+                } catch (IllegalArgumentException invalidToken) {
+                    return unauthorized(response);
+                }
                 if (token.organization() == null) return unauthorized(response);
                 var member = directory.active(token.subject());
                 if (member == null || !member.organization().equals(token.organization())) return unauthorized(response);
@@ -42,8 +47,6 @@ public class AccountAuthentication implements HttpAuthenticationMechanism {
                 request.setAttribute(AccountDirectory.Membership.class.getName(), member);
                 return context.notifyContainerAboutLogin(member.principal(), member.groups());
             }
-            return unauthorized(response);
-        } catch (IllegalArgumentException invalid) {
             return unauthorized(response);
         } catch (IOException | GeneralSecurityException | SQLException unavailable) {
             response.setStatus(503);

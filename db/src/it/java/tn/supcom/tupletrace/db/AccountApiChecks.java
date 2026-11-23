@@ -138,6 +138,32 @@ public final class AccountApiChecks {
         }
     }
 
+    private void checkEvent(HttpResponse<String> response, String kind, UUID actor, UUID organization, UUID target)
+            throws SQLException {
+        var correlation = UUID.fromString(response.headers().firstValue("X-Correlation-ID").orElseThrow());
+        try (var stmt = operator.prepareStatement("""
+                SELECT event_type,actor_id,organization_id,target_id FROM tt.audit_event WHERE correlation_id=?
+                """)) {
+            stmt.setObject(1, correlation);
+            try (var row = stmt.executeQuery()) {
+                assertTrue(row.next());
+                assertEquals(kind, row.getString(1));
+                assertEquals(actor, row.getObject(2, UUID.class));
+                assertEquals(organization, row.getObject(3, UUID.class));
+                assertEquals(target, row.getObject(4, UUID.class));
+                assertFalse(row.next());
+            }
+        }
+    }
+
+    private void checkScope(String token) throws Exception {
+        var foreign = request("/organizations/" + other, null, token, 404);
+        var missing = request("/organizations/" + UUID.randomUUID(), null, token, 404);
+        assertTrue(foreign.body().isEmpty() && missing.body().isEmpty());
+        assertEquals("no-store", foreign.headers().firstValue("Cache-Control").orElseThrow());
+        checkEvent(foreign, "IAM_ORGANIZATION_NOT_FOUND", user, org, null);
+    }
+
     private void run() throws Exception {
         update("INSERT INTO tt.organization(id,name,status) VALUES (?,'A','ACTIVE'),(?,'B','ACTIVE')", org, other);
         update("INSERT INTO tt.app_user(id,email,organization_id,status) VALUES (?,?,?,'ACTIVE')", user,email,org);
@@ -156,7 +182,8 @@ public final class AccountApiChecks {
         String token = login(email, password, 200);
         String mine = "/organizations/" + org;
         request(mine, null, null, 401);
-        request("/private", null, token, 403);
+        checkEvent(request("/private", null, token, 403), "IAM_AUTHORIZATION_DENIED", user, org, null);
+        checkScope(token);
         // Cette URL accepte toute identité au niveau servlet. L'EJB impose seul le rôle AUDITEUR.
         request(mine, null, token, 403);
         request("/auth/factor/revoke", "{}", token, 403);
@@ -186,7 +213,7 @@ public final class AccountApiChecks {
         try (var reader = Json.createReader(new StringReader(metadata.body()))) {
             assertEquals(org.toString(), reader.readObject().getString("id"));
         }
-        request("/organizations/" + other, null, token, 404);
+        checkScope(token);
         var colleagueSeed = enroll(colleague);
         String wrongCode = "000000";
         long colleagueStep = step();
@@ -200,8 +227,12 @@ public final class AccountApiChecks {
         request("/organizations/" + other, null, otherToken, 200);
         request(mine, null, otherToken, 404);
         request("/private", null, null, 401);
-        update("UPDATE tt.role_assignment SET role_name='DESTINATAIRE' WHERE user_id=?", user);
-        request(mine, null, token, 403);
+        for (String role : List.of("PROPRIETAIRE", "ADMINISTRATEUR", "GESTIONNAIRE", "ENQUETEUR", "DESTINATAIRE")) {
+            update("UPDATE tt.role_assignment SET role_name=? WHERE user_id=?", role, user);
+            request("/private", null, token, 403);
+            checkEvent(request(mine, null, token, 403), "IAM_AUTHORIZATION_DENIED", user, org, null);
+            checkScope(token);
+        }
         update("UPDATE tt.role_assignment SET role_name='AUDITEUR' WHERE user_id=?", user);
         request(mine, null, token, 200);
         update("DELETE FROM tt.role_assignment WHERE user_id=?", user);
@@ -238,11 +269,32 @@ public final class AccountApiChecks {
         var staleToken = tokens(Clock.systemUTC()).issue(user,org,stale);
         request("/private", null, staleToken, 200);
         request("/auth/factor/revoke", "{}", staleToken, 403);
-        request("/auth/logout", "{}", staleToken, 204);
+        var service = tokens(Clock.systemUTC());
+        var staleIdentity = service.verify(staleToken);
+        var foreignIdentity = service.verify(otherToken);
+        String foreignSelector = Json.createObjectBuilder().add("user", colleague.toString())
+                .add("organization", other.toString()).add("jti", foreignIdentity.tokenId().toString())
+                .add("factor_id", foreignIdentity.proof().factor().toString()).build().toString();
+        checkEvent(request("/auth/logout", foreignSelector, staleToken, 204), "IAM_LOGOUT", user, org,
+                staleIdentity.tokenId());
         request("/auth/logout", "{}", staleToken, 401);
         request("/private", null, staleToken, 401);
+        request("/organizations/" + other, null, staleToken, 401);
         request("/private", null, second, 200);
-        var revoked = request("/auth/factor/revoke", "{}", second, 0);
+        // A failure to append the audit event must roll back the factor revocation.
+        String audit = "tt.append_audit_event(uuid,uuid,text,uuid,uuid)";
+        update("REVOKE EXECUTE ON FUNCTION " + audit + " FROM tt_app");
+        try {
+            assertTrue(request("/auth/logout", "{}", second, 500).body().isBlank());
+            request(mine, null, second, 200);
+            assertTrue(request("/auth/factor/revoke", "{}", second, 500).body().isBlank());
+        } finally {
+            update("GRANT EXECUTE ON FUNCTION " + audit + " TO tt_app");
+        }
+        request(mine, null, second, 200);
+        var revoked = request("/auth/factor/revoke", foreignSelector, second, 204);
+        checkEvent(revoked, "IAM_FACTOR_REVOKED", user, org, identity.proof().factor());
+        request("/organizations/" + other, null, otherToken, 200);
         try (var stmt = operator.prepareStatement("SELECT count(*) FROM tt.totp_factor WHERE user_id=?")) {
             stmt.setObject(1, user);
             try (var row = stmt.executeQuery()) {
