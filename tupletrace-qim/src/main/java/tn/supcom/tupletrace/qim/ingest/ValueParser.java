@@ -54,6 +54,19 @@ final class ValueParser {
         }
     }
 
+    /**
+     * Lecture tolérante d'un nombre dans un extrait suspect : le nombre de décimales n'est pas
+     * borné (un bruit a pu en ajouter), mais l'écriture doit rester non ambiguë.
+     *
+     * @return le nombre, ou {@code null} si la cellule est vide, ambiguë ou mal formée
+     */
+    BigDecimal parseLenientNumber(String raw) {
+        if (raw == null || raw.indexOf(otherSeparator) >= 0 || !decimal.matcher(raw).matches()) {
+            return null;
+        }
+        return new BigDecimal(raw.replace(decimalSeparator, '.'));
+    }
+
     private static IntegerValue parseInteger(String raw, long lineNumber) {
         if (raw.indexOf('.') >= 0 || raw.indexOf(',') >= 0) {
             // « 1,234 » ou « 1.234 » : séparateur de milliers ou décimal ? On ne choisit pas.

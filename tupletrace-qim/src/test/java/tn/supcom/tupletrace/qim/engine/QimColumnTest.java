@@ -62,6 +62,21 @@ class QimColumnTest {
     }
 
     @Test
+    void readingANoisyDecimalUsesTheSameRoundingAsTheIntegerReading() {
+        var humidity = decimalColumn("0.10", "0.02");
+        var random = new java.util.Random(3);
+        for (int i = 0; i < 20_000; i++) {
+            long units = random.nextLong(-99_999, 100_000);
+            assertEquals(humidity.extract(units), humidity.extract(BigDecimal.valueOf(units, 2)), "u=" + units);
+        }
+        // δ = 0,02 : 21,37 est à mi-chemin de 21,36 (m = 1068, pair) et 21,38 (m = 1069, impair) → supérieur.
+        assertEquals(1, humidity.extract(new BigDecimal("21.37")));
+        assertEquals(0, humidity.extract(new BigDecimal("21.3699")));
+        // -21,37 est à mi-chemin de -21,38 (m = -1069) et -21,36 (m = -1068) → supérieur : m = -1068, pair.
+        assertEquals(0, humidity.extract(new BigDecimal("-21.37")));
+    }
+
+    @Test
     void acceptsOnlyEligibleNumericColumns() {
         assertThrows(IllegalArgumentException.class,
                 () -> new QimColumn(Attribute.key(1, "record_id", AttributeType.integer())));

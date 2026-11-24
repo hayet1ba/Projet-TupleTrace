@@ -94,6 +94,20 @@ public final class QimColumn {
         return QimQuantizer.extract(units, stepUnits);
     }
 
+    /**
+     * Lit le bit d'une valeur éventuellement bruitée (plus de décimales que le type) : parité de
+     * round(valeur / δ), avec la même règle d'arrondi que {@link QimQuantizer#extract} (une
+     * moitié exacte va vers le multiple supérieur). Calcul exact, sans conversion en double.
+     */
+    public int extract(BigDecimal value) {
+        var units = value.movePointRight(scale);
+        var step = BigDecimal.valueOf(stepUnits);
+        var quotient = units.divide(step, 0, RoundingMode.FLOOR);
+        var remainder = units.subtract(quotient.multiply(step));
+        var nearest = remainder.multiply(BigDecimal.TWO).compareTo(step) >= 0 ? quotient.add(BigDecimal.ONE) : quotient;
+        return nearest.toBigInteger().testBit(0) ? 1 : 0;
+    }
+
     /** Écart entre deux valeurs, en unités de la colonne converties dans l'unité du schéma. */
     BigDecimal toColumnUnit(long units) {
         return BigDecimal.valueOf(units, scale);

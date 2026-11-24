@@ -60,7 +60,8 @@ final class HeaderMapping {
         return byPosition[position];
     }
 
-    private static String key(String name) {
+    /** Forme de comparaison d'un nom de colonne : NFC, sans espaces entourants, en minuscules. */
+    static String key(String name) {
         return Normalizer.normalize(name, Normalizer.Form.NFC).strip().toLowerCase(Locale.ROOT);
     }
 }
