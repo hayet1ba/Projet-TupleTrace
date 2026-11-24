@@ -33,6 +33,8 @@ public final class AccountApiChecks {
     }
 
     public static void main(String[] args) throws Exception {
+        boolean timingOnly = args.length == 2 && "--timing".equals(args[1]);
+        if (args.length != 1 && !timingOnly) throw new IllegalArgumentException("Expected trust store and optional --timing");
         var trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         trust.init(KeyStore.getInstance(Path.of(args[0]).toFile(), (char[]) null));
         var tls = SSLContext.getInstance("TLS");
@@ -43,6 +45,10 @@ public final class AccountApiChecks {
              var row = check.executeQuery("SELECT current_database()")) {
             assertTrue(row.next());
             assertEquals("tupletrace_test", row.getString(1));
+            if (timingOnly) {
+                new LoginTimingChecks(db, client).run();
+                return;
+            }
             new AccountApiChecks(db, client).run();
         }
         System.out.println("Contrôles HTTPS des comptes, des rôles, des organisations et des jetons réussis.");
@@ -61,7 +67,7 @@ public final class AccountApiChecks {
         if (bearer != null) req.header("Authorization", "Bearer " + bearer);
         var result = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
         if (expected != 0) assertEquals(expected, result.statusCode(), path);
-        if (json != null) assertEquals("no-store", result.headers().firstValue("Cache-Control").orElse(""));
+        assertEquals("no-store", result.headers().firstValue("Cache-Control").orElse(""), path);
         return result;
     }
 

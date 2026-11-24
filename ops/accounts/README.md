@@ -64,6 +64,22 @@ V5 conserve les identités et les affectations de rôles existantes. Un compte c
 
 `PasswordAccounts.verify(email, password, peer, correlation)` est un service interne. Lui fournir la datasource applicative en dehors d'une transaction JTA ambiante, l'adresse réseau du pair observée par le serveur et un UUID de corrélation. La connexion JDBC réservée à l'appel gère sa transaction. Le résultat `VERIFIED` identifie exclusivement un premier facteur réussi. La vérification exige un utilisateur actif, une organisation active et un vérificateur. La base normalise le courriel comme en V1. Un compte inconnu, suspendu, fermé, invité ou sans mot de passe et une saisie incorrecte donnent tous `DENIED`, sans UUID. Les tentatives admises passent par un calcul Argon2id de même coût, y compris avec un vérificateur factice en l'absence de compte utilisable. La comparaison des 32 octets utilise `MessageDigest.isEqual`.
 
+## Mesure des temps de connexion
+
+Le mode `--timing` mesure le POST HTTPS de connexion sur la boucle locale. Utiliser la configuration d'intégration du job `build` avec un WildFly déployé, une base PostgreSQL jetable `tupletrace_test` migrée par le profil `postgres-it`, son magasin de confiance et les variables `TT_JDBC_URL` et `TT_MIGRATION_PASSWORD`. Le scénario d'autorisation ordinaire exerce lui-même le quota par origine ; lancer chaque répétition statistique dans un environnement de test indépendant.
+
+```powershell
+$deps = (Get-Content db/target/account-api-classpath -Raw).Trim()
+$trust = Join-Path $env:JBOSS_HOME 'standalone/configuration/application.keystore'
+java -cp "db/target/test-classes;$deps" tn.supcom.tupletrace.db.AccountApiChecks $trust --timing
+```
+
+Chaque paire utilise deux identifiants synthétiques de même longueur, chacun soumis une seule fois avec le même mot de passe erroné. Un seul des deux comptes existe et possède un vérificateur Argon2id. Après deux paires d'échauffement, huit paires sont mesurées ; chaque groupe passe quatre fois en premier, dans un ordre mélangé avec la graine 6238. La durée va de l'envoi à la réception du corps complet. Le provisionnement, la préparation du JSON et la lecture des traces SQL sont hors chronométrage.
+
+La sortie indique pour chaque tentative sa durée en millisecondes et sa classification. Une paire est écartée si elle contient un 429 ou un 401 sans trace PostgreSQL de vérification admise. V5 enregistre alors des traces différentes : seule la décision `CHECK` conserve l'empreinte du courriel dans `login_failure`. Les limites applicatives restent actives. En dessous de quatre paires exploitables, le banc signale un échantillon insuffisant.
+
+Le résumé donne les médianes, les 90ᵉ percentiles au rang supérieur, la médiane des différences appariées (actif moins inconnu) et la valeur p du test exact des signes bilatéral, hors égalités. Aucun seuil de latence ou de valeur p ne conditionne la réussite. Avec huit paires, le 90ᵉ percentile est le maximum observé. Une valeur p élevée ne démontre pas l'équivalence des temps.
+
 ## Limitation et audit
 
 PostgreSQL sérialise les contrôles concurrents d'une même adresse ou d'un même identifiant sur toutes les instances. V5 réserve provisoirement l'échec avant le calcul coûteux. Un succès annule cette réservation. Un refus la confirme avec un événement `PASSWORD_CHECK_DENIED` dans le journal existant. Celui-ci contient l'UUID de corrélation et omet courriel, adresse, mot de passe et vérificateur. Le rôle `tt_app` peut appeler la fonction de réservation et lire le candidat correspondant à une tentative admise. Les deux nouvelles tables sont réservées au propriétaire SQL.
