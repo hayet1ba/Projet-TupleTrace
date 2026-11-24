@@ -13,6 +13,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.87</version>
+    </dependency>
+    <dependency>
       <groupId>io.github.nbaars</groupId>
       <artifactId>paseto4j-commons</artifactId>
       <version>2026.1</version>

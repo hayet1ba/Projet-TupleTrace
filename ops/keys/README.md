@@ -1,6 +1,6 @@
 # Clés des jetons d’accès
 
-Les jetons de la plateforme sont des PASETO v4.public signés avec Ed25519. L’émission est réservée aux appels Java internes. Les routes protégées de ce lot utilisent toujours BASIC sur HTTPS.
+Les jetons de la plateforme sont des PASETO v4.public signés avec Ed25519. La connexion HTTPS des comptes utilise le service interne d’émission après vérification du premier facteur. [Contrat de connexion](../accounts/README.md)
 
 ## Configurer le serveur et l’opérateur
 

@@ -35,6 +35,7 @@ Démarrer WildFly 42 en mode standalone avec `TT_JDBC_URL` et `TT_APP_PASSWORD` 
 
 ```bash
 "$JBOSS_HOME/bin/jboss-cli.sh" --connect --file=ops/wildfly/datasource.cli
+"$JBOSS_HOME/bin/jboss-cli.sh" --connect --file=ops/wildfly/authentication.cli
 ```
 
 Le script crée la datasource JTA `java:/jdbc/TupleTraceDS` au premier passage et teste le pool à chaque exécution. La configuration serveur conserve les expressions d'environnement. Le pilote est déployé sous le nom stable `postgresql.jar`. L'endpoint de santé du lot 1 continue de vérifier que l'API répond. Le test JDBC est indépendant.

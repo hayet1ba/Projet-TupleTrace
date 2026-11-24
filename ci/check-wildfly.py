@@ -56,8 +56,8 @@ def main():
 
     # Ces identités existent uniquement dans le domaine éphémère du job CI.
     for username, variable, expected in (
-        ("ci-auditeur", "TT_TEST_AUDITEUR", 200),
-        ("ci-destinataire", "TT_TEST_DESTINATAIRE", 403),
+        ("ci-auditeur", "TT_TEST_AUDITEUR", 401),
+        ("ci-destinataire", "TT_TEST_DESTINATAIRE", 401),
     ):
         if variable in os.environ:
             pair = f"{username}:{os.environ[variable]}".encode()
