@@ -54,6 +54,15 @@
   </security-constraint>
   <security-constraint>
     <web-resource-collection>
+      <web-resource-name>Profil du compte connecté</web-resource-name>
+      <url-pattern>/api/auth/me</url-pattern>
+      <http-method>GET</http-method>
+    </web-resource-collection>
+    <auth-constraint><role-name>**</role-name></auth-constraint>
+    <user-data-constraint><transport-guarantee>CONFIDENTIAL</transport-guarantee></user-data-constraint>
+  </security-constraint>
+  <security-constraint>
+    <web-resource-collection>
       <web-resource-name>Session du compte</web-resource-name>
       <url-pattern>/api/auth/logout</url-pattern>
       <url-pattern>/api/auth/factor/revoke</url-pattern>

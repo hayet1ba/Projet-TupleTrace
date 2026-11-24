@@ -170,6 +170,19 @@ public final class AccountApiChecks {
         checkEvent(foreign, "IAM_ORGANIZATION_NOT_FOUND", user, org, null);
     }
 
+    private void assertProfile(HttpResponse<String> response, UUID account, UUID organization, String... roles) {
+        assertTrue(response.headers().firstValue("Content-Type").orElseThrow().startsWith("application/json"));
+        try (var reader = Json.createReader(new StringReader(response.body()))) {
+            var profile = reader.readObject();
+            assertEquals(Set.of("id", "org", "roles"), profile.keySet());
+            assertEquals(account.toString(), profile.getString("id"));
+            assertEquals(organization.toString(), profile.getString("org"));
+            var expectedRoles = Json.createArrayBuilder();
+            for (String role : roles) expectedRoles.add(role);
+            assertEquals(expectedRoles.build(), profile.getJsonArray("roles"));
+        }
+    }
+
     private void run() throws Exception {
         update("INSERT INTO tt.organization(id,name,status) VALUES (?,'A','ACTIVE'),(?,'B','ACTIVE')", org, other);
         update("INSERT INTO tt.app_user(id,email,organization_id,status) VALUES (?,?,?,'ACTIVE')", user,email,org);
@@ -186,6 +199,9 @@ public final class AccountApiChecks {
         login("unknown-" + email, password, 401);
         request("/auth/login", "{\"email\":\"x\",\"password\":\"x\",\"roles\":[\"AUDITEUR\"]}", null, 400);
         String token = login(email, password, 200);
+        request("/auth/me", null, null, 401);
+        request("/auth/me", null, "invalid", 401);
+        assertProfile(request("/auth/me", null, token, 200), user, org);
         String mine = "/organizations/" + org;
         request(mine, null, null, 401);
         checkEvent(request("/private", null, token, 403), "IAM_AUTHORIZATION_DENIED", user, org, null);
@@ -197,6 +213,7 @@ public final class AccountApiChecks {
         for (String role : List.of("ADMINISTRATEUR", "PROPRIETAIRE", "AUDITEUR")) {
             update("UPDATE tt.role_assignment SET role_name=? WHERE user_id=?", role, user);
             request(mine, null, token, 401);
+            request("/auth/me", null, token, 401);
             login(email, password, 202);
             login(email, password, "000000", 401);
         }
@@ -213,6 +230,7 @@ public final class AccountApiChecks {
         login(email, password, 202);
         String accepted = TotpFactor.code(seed, step());
         token = concurrentLogin(accepted);
+        assertProfile(request("/auth/me", null, token, 200), user, org, "AUDITEUR");
         login(email, password, accepted, 401);
         request("/private", null, token, 200);
         var metadata = request(mine, null, token, 200);
@@ -230,28 +248,37 @@ public final class AccountApiChecks {
         login(colleagueEmail, colleaguePassword, TotpFactor.code(colleagueSeed, step()), 401);
         update("UPDATE tt.totp_factor SET window_start=now()-interval '5 minutes' WHERE user_id=?", colleague);
         String otherToken = login(colleagueEmail, colleaguePassword, TotpFactor.code(colleagueSeed,step()), 200);
+        assertProfile(request("/auth/me?user=" + user + "&organization=" + org, null, otherToken, 200),
+                colleague, other, "AUDITEUR");
         request("/organizations/" + other, null, otherToken, 200);
         request(mine, null, otherToken, 404);
         request("/private", null, null, 401);
         for (String role : List.of("PROPRIETAIRE", "ADMINISTRATEUR", "GESTIONNAIRE", "ENQUETEUR", "DESTINATAIRE")) {
             update("UPDATE tt.role_assignment SET role_name=? WHERE user_id=?", role, user);
+            assertProfile(request("/auth/me", null, token, 200), user, org, role);
             request("/private", null, token, 403);
             checkEvent(request(mine, null, token, 403), "IAM_AUTHORIZATION_DENIED", user, org, null);
             checkScope(token);
         }
         update("UPDATE tt.role_assignment SET role_name='AUDITEUR' WHERE user_id=?", user);
+        update("INSERT INTO tt.role_assignment(organization_id,user_id,role_name) VALUES (?,?,'ENQUETEUR')", org, user);
+        assertProfile(request("/auth/me", null, token, 200), user, org, "AUDITEUR", "ENQUETEUR");
         request(mine, null, token, 200);
         update("DELETE FROM tt.role_assignment WHERE user_id=?", user);
+        assertProfile(request("/auth/me", null, token, 200), user, org);
         request(mine, null, token, 403);
         update("UPDATE tt.app_user SET organization_id=? WHERE id=?", other,user);
+        request("/auth/me", null, token, 401);
         request("/private", null, token, 401);
         update("UPDATE tt.app_user SET organization_id=? WHERE id=?", org,user);
         update(grant, org, user);
         update("UPDATE tt.app_user SET status='SUSPENDED' WHERE id=?", user);
+        request("/auth/me", null, token, 401);
         login(email, password, TotpFactor.code(seed, step() + 1), 401);
         request(mine, null, token, 401);
         update("UPDATE tt.app_user SET status='ACTIVE' WHERE id=?", user);
         update("UPDATE tt.organization SET status='SUSPENDED' WHERE id=?", org);
+        request("/auth/me", null, token, 401);
         login(email, password, TotpFactor.code(seed, step() + 1), 401);
         request(mine, null, token, 401);
         update("UPDATE tt.organization SET status='ACTIVE' WHERE id=?", org);
@@ -261,6 +288,7 @@ public final class AccountApiChecks {
         String second = login(email, password, TotpFactor.code(seed, step() + 1), 200);
         update("INSERT INTO tt.revoked_access_token(token_id,expires_at) VALUES (?,?)",
                 identity.tokenId(), Timestamp.from(identity.expiresAt()));
+        request("/auth/me", null, token, 401);
         request("/private", null, token, 401);
         request("/private", null, second, 200);
         var past = tokens(Clock.offset(Clock.systemUTC(), Duration.ofMinutes(-16)));
@@ -309,6 +337,7 @@ public final class AccountApiChecks {
             }
         }
         assertEquals(204, revoked.statusCode());
+        request("/auth/me", null, second, 401);
         request("/private", null, second, 401);
         login(email, password, 202);
         login(email, password, TotpFactor.code(seed,step()), 401);

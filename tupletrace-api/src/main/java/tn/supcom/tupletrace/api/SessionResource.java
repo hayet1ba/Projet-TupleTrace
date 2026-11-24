@@ -7,9 +7,12 @@ import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import tn.supcom.tupletrace.security.AccessTokens;
 
@@ -17,6 +20,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.Map;
 import java.util.UUID;
 
 @Path("/auth")
@@ -25,6 +29,18 @@ import java.util.UUID;
 @TransactionAttribute(TransactionAttributeType.REQUIRED)
 public class SessionResource {
     @Resource(lookup = "java:/jdbc/TupleTraceDS") DataSource database;
+
+    @GET
+    @Path("/me")
+    @RolesAllowed("AUTHENTICATED_ACCOUNT")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response me(@Context HttpServletRequest request) {
+        var member = (AccountDirectory.Membership) request.getAttribute(AccountDirectory.Membership.class.getName());
+        if (member == null) return status(401);
+        var roles = member.groups().stream().filter(group -> !group.equals("AUTHENTICATED_ACCOUNT")).sorted().toList();
+        return Response.ok(Map.of("id", member.user(), "org", member.organization(), "roles", roles))
+                .header("Cache-Control", "no-store").build();
+    }
 
     @POST
     @Path("/logout")
