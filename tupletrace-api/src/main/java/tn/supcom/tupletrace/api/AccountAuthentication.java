@@ -22,7 +22,7 @@ public class AccountAuthentication implements HttpAuthenticationMechanism {
     public AuthenticationStatus validateRequest(HttpServletRequest request, HttpServletResponse response,
                                                 HttpMessageContext context) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (path.startsWith("/api/auth/")) response.setHeader("Cache-Control", "no-store");
+        if (context.isProtected() || path.startsWith("/api/auth/")) response.setHeader("Cache-Control", "no-store");
         var headers = request.getHeaders("Authorization");
         if (!headers.hasMoreElements()) {
             return context.isProtected() ? unauthorized(response) : context.doNothing();
