@@ -51,7 +51,8 @@ public final class MarkingPlanner {
         return placementOf(CanonicalSerializer.serializeTuple(schema, tuple));
     }
 
-    Optional<Placement> placementOf(byte[] identity) {
+    /** Même décision, à partir de l'identité canonique ser_tuple déjà calculée. */
+    public Optional<Placement> placementOf(byte[] identity) {
         if (!selector.isSelected(identity)) {
             return Optional.empty();
         }

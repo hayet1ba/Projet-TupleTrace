@@ -36,7 +36,7 @@ class SuspectCsvReaderTest {
     @Test
     void toleratesMissingNonKeyColumnsExtraColumnsAndAnyOrder() throws IOException {
         var reading = read(CsvFormat.COMMA_DOT, "extra,temperature,record_id\nx,21.37,1\ny,,2\n");
-        assertEquals(new SuspectSummary(2, 0, 0, true, false), reading.summary());
+        assertEquals(new SuspectSummary(2, 0, 0, 0, true, false), reading.summary());
         assertEquals(new IntegerValue(1), reading.rows().getFirst().key().value(1).orElseThrow());
         assertEquals(new BigDecimal("21.37"), reading.rows().getFirst().number(4).orElseThrow());
         assertTrue(reading.rows().get(1).number(4).isEmpty());
@@ -76,8 +76,18 @@ class SuspectCsvReaderTest {
 
                 4,10.00
                 """);
-        assertEquals(new SuspectSummary(8, 5, 1, true, false), reading.summary());
+        assertEquals(new SuspectSummary(8, 5, 1, 2, true, false), reading.summary());
         assertEquals(3, reading.rows().size());
+        assertFalse(reading.rows().get(0).repeatedKey(), "à la première occurrence, on ne sait pas encore");
+        assertTrue(reading.rows().get(1).repeatedKey());
+        assertFalse(reading.rows().get(2).repeatedKey());
+    }
+
+    @Test
+    void countsEveryOccurrenceOfARepeatedKey() throws IOException {
+        var reading = read(CsvFormat.COMMA_DOT, "record_id,temperature\n7,1.00\n8,1.00\n7,1.01\n7,1.02\n9,1.00\n8,1.00\n");
+        // pk 7 : 3 lignes, pk 8 : 2 lignes → 2 pk répétées, 5 lignes à écarter.
+        assertEquals(new SuspectSummary(6, 0, 2, 5, true, false), reading.summary());
     }
 
     @Test

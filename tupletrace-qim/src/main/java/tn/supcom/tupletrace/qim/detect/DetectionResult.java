@@ -6,14 +6,14 @@ import tn.supcom.tupletrace.qim.ingest.SuspectSummary;
  * Résultat de la recherche du filigrane. Toutes les statistiques sont calculées par le moteur à
  * partir de l'extrait seul (SR-INT-10) ; elles ne contiennent aucune valeur de tuple.
  *
- * @param bitsRead       n : cellules du filigrane retrouvées et lisibles dans l'extrait
+ * @param bitsRead       n : cellules du filigrane retrouvées et lisibles, hors lignes écartées
  * @param bitsMatching   k : cellules dont le bit relu est celui attendu
  * @param pValue         P(X ≥ k) sous H0 (bits au hasard), arrondie à 0 sous ~1e-308
  * @param log10PValue    log10 de la p-valeur, toujours exact
  * @param threshold      seuil de décision (1e-6)
  * @param minimumBits    n minimal pour conclure (20)
  * @param reason         raison d'un verdict INDETERMINE, {@link Reason#NONE} sinon
- * @param extract        bilan de lecture de l'extrait
+ * @param extract        bilan de lecture de l'extrait, dont les lignes écartées pour pk répétée
  */
 public record DetectionResult(Verdict verdict, long bitsRead, long bitsMatching, double pValue, double log10PValue,
                               double threshold, long minimumBits, Reason reason, SuspectSummary extract) {
@@ -32,10 +32,13 @@ public record DetectionResult(Verdict verdict, long bitsRead, long bitsMatching,
         MISSING_KEY_COLUMN,
         /** Un nom de colonne apparaît plusieurs fois : on ne sait pas laquelle lire. */
         AMBIGUOUS_HEADER,
-        /** Une même pk apparaît plusieurs fois : l'identité des lignes est ambiguë. */
-        DUPLICATE_KEY,
-        /** Trop peu de bits relus pour qu'une conclusion soit possible. */
+        /** Trop peu de bits relus (après exclusion des lignes ambiguës) pour pouvoir conclure. */
         INSUFFICIENT_BITS
+    }
+
+    /** Lignes écartées parce que leur pk apparaît plusieurs fois dans l'extrait. */
+    public long excludedDuplicateRows() {
+        return extract.rowsWithRepeatedKey();
     }
 
     /** Applique la règle de décision ; seul le détecteur fournit n, k et le bilan. */
@@ -47,8 +50,6 @@ public record DetectionResult(Verdict verdict, long bitsRead, long bitsMatching,
             reason = Reason.MISSING_KEY_COLUMN;
         } else if (extract.ambiguousHeader()) {
             reason = Reason.AMBIGUOUS_HEADER;
-        } else if (extract.duplicateKeys() > 0) {
-            reason = Reason.DUPLICATE_KEY;
         } else if (n < MINIMUM_BITS) {
             reason = Reason.INSUFFICIENT_BITS;
         } else {

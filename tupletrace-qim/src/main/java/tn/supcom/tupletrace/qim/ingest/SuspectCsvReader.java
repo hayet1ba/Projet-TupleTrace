@@ -28,7 +28,8 @@ import java.util.function.Consumer;
  *   <li>colonne CLE absente : aucune ligne n'est exploitable ({@code keyColumnsPresent = false}) ;</li>
  *   <li>nom de colonne répété : en-tête ambigu, aucune ligne n'est remise ;</li>
  *   <li>pk vide ou illisible, ligne mal formée : ligne ignorée et comptée ;</li>
- *   <li>pk répétée : comptée comme doublon (l'appelant conclura à une identité ambiguë) ;</li>
+ *   <li>pk répétée : la ligne est remise marquée {@code repeatedKey} ; l'appelant écarte toutes
+ *       les lignes de cette pk, première occurrence comprise ;</li>
  *   <li>nombre bruité (plus de décimales que le type) : accepté tel quel.</li>
  * </ul>
  */
@@ -48,7 +49,7 @@ public final class SuspectCsvReader {
         var lines = new BoundedLineReader(in, limits);
         var headerLine = lines.readLine();
         if (headerLine == null) {
-            return new SuspectSummary(0, 0, 0, false, false);
+            return new SuspectSummary(0, 0, 0, 0, false, false);
         }
         var header = CsvLineParser.parse(headerLine, format.fieldSeparator(), limits.maxColumns(), 1);
         var byPosition = new Attribute[header.size()];
@@ -66,14 +67,15 @@ public final class SuspectCsvReader {
         }
         boolean keysPresent = schema.keyAttributes().stream().allMatch(k -> seen.contains(key(k.name())));
         if (!keysPresent || ambiguous) {
-            return new SuspectSummary(0, 0, 0, keysPresent, ambiguous);
+            return new SuspectSummary(0, 0, 0, 0, keysPresent, ambiguous);
         }
 
         var parser = new ValueParser(format);
         var keys = new PkUniquenessIndex();
         long read = 0;
         long skipped = 0;
-        long duplicates = 0;
+        long repeatedKeys = 0;
+        long repeatOccurrences = 0;
         String line;
         while ((line = lines.readLine()) != null) {
             long lineNumber = lines.lineNumber();
@@ -85,12 +87,18 @@ public final class SuspectCsvReader {
                 skipped++;
                 continue;
             }
-            if (!keys.add(CanonicalSerializer.serializeTuple(schema, row.key()))) {
-                duplicates++;
+            var occurrence = keys.record(CanonicalSerializer.serializeTuple(schema, row.key()));
+            if (occurrence == PkUniquenessIndex.Occurrence.FIRST_REPEAT) {
+                repeatedKeys++;
+            }
+            if (occurrence != PkUniquenessIndex.Occurrence.FIRST) {
+                repeatOccurrences++;
+                row = new SuspectRow(row.key(), row.numbers(), true);
             }
             sink.accept(row);
         }
-        return new SuspectSummary(read, skipped, duplicates, true, false);
+        // Chaque pk répétée compte sa première occurrence en plus de ses répétitions.
+        return new SuspectSummary(read, skipped, repeatedKeys, repeatOccurrences + repeatedKeys, true, false);
     }
 
     /** Ligne exploitable, ou {@code null} si elle doit être ignorée. */
@@ -138,7 +146,7 @@ public final class SuspectCsvReader {
         try {
             var key = CanonicalTuple.of(keyValues);
             CanonicalSerializer.serializeTuple(schema, key);
-            return new SuspectRow(key, numbers);
+            return new SuspectRow(key, numbers, false);
         } catch (CanonicalException unusableKey) {
             return null;
         }

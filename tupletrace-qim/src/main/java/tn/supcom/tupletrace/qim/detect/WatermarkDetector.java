@@ -1,5 +1,6 @@
 package tn.supcom.tupletrace.qim.detect;
 
+import tn.supcom.tupletrace.qim.canonical.CanonicalSerializer;
 import tn.supcom.tupletrace.qim.engine.Layer;
 import tn.supcom.tupletrace.qim.engine.MarkingKey;
 import tn.supcom.tupletrace.qim.engine.MarkingParameters;
@@ -12,6 +13,7 @@ import tn.supcom.tupletrace.qim.schema.DatasetSchema;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -22,6 +24,10 @@ import java.util.Objects;
  * bit attendu ; on relit la parité de la valeur et on compte les concordances. La décision repose
  * sur un test binomial (seuil 1e-6). Seul l'extrait entre : n, k et la p-valeur ne viennent
  * jamais de l'appelant (SR-INT-10).
+ *
+ * <p>Une pk répétée dans l'extrait rend ses lignes ambiguës : toutes ses occurrences, première
+ * comprise, sont écartées et comptées ; la décision se fait sur les lignes restantes. Une copie
+ * retouchée d'une ligne ne peut donc pas injecter de faux bits.
  */
 public final class WatermarkDetector {
     private final DatasetSchema schema;
@@ -35,20 +41,25 @@ public final class WatermarkDetector {
     }
 
     public DetectionResult detect(InputStream suspect, CsvFormat format, CsvLimits limits) throws IOException {
-        long[] counts = new long[2];        // [0] = n bits lus, [1] = k bits concordants
+        // Contribution de chaque ligne du filigrane, indexée par l'identité de sa pk :
+        // vrai si le bit relu est celui attendu. Seules ces lignes (~7 %) sont gardées en mémoire.
+        var contributions = new HashMap<ByteBuffer, Boolean>();
         var summary = new SuspectCsvReader(schema, format, limits).read(suspect, row -> {
-            var placement = planner.placementOf(row.key());
+            var identity = CanonicalSerializer.serializeTuple(schema, row.key());
+            if (row.repeatedKey()) {
+                contributions.remove(ByteBuffer.wrap(identity));
+                return;
+            }
+            var placement = planner.placementOf(identity);
             if (placement.isEmpty() || placement.get().layer() != Layer.WATERMARK) {
                 return;
             }
             var column = columns.get(placement.get().column().attributeId());
-            row.number(column.attribute().attributeId()).ifPresent(value -> {
-                counts[0]++;
-                if (column.extract(value) == placement.get().watermarkBit()) {
-                    counts[1]++;
-                }
-            });
+            row.number(column.attribute().attributeId()).ifPresent(value -> contributions.put(
+                    ByteBuffer.wrap(identity), column.extract(value) == placement.get().watermarkBit()));
         });
-        return DetectionResult.decide(counts[0], counts[1], summary);
+        long n = contributions.size();
+        long k = contributions.values().stream().filter(Boolean::booleanValue).count();
+        return DetectionResult.decide(n, k, summary);
     }
 }

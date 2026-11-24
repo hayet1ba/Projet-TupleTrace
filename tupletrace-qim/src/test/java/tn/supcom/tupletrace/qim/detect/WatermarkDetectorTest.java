@@ -4,9 +4,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tn.supcom.tupletrace.qim.canonical.CanonicalTuple;
+import tn.supcom.tupletrace.qim.canonical.CanonicalValue.IntegerValue;
 import tn.supcom.tupletrace.qim.detect.DetectionResult.Reason;
+import tn.supcom.tupletrace.qim.engine.Layer;
 import tn.supcom.tupletrace.qim.engine.MarkingKey;
 import tn.supcom.tupletrace.qim.engine.MarkingParameters;
+import tn.supcom.tupletrace.qim.engine.MarkingPlanner;
 import tn.supcom.tupletrace.qim.ingest.CsvFormat;
 import tn.supcom.tupletrace.qim.ingest.CsvLimits;
 import tn.supcom.tupletrace.qim.ingest.SuspectSummary;
@@ -20,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -114,7 +119,7 @@ class WatermarkDetectorTest {
 
     @Test
     void decisionRuleAroundTwentyBits() {
-        var readable = new SuspectSummary(100, 0, 0, true, false);
+        var readable = new SuspectSummary(100, 0, 0, 0, true, false);
         assertEquals(Verdict.INDETERMINE, DetectionResult.decide(19, 19, readable).verdict());
         assertEquals(Verdict.POSITIF, DetectionResult.decide(20, 20, readable).verdict());
         assertEquals(Verdict.NEGATIF, DetectionResult.decide(20, 19, readable).verdict());
@@ -130,14 +135,62 @@ class WatermarkDetectorTest {
         assertEquals(0, result.bitsRead());
     }
 
+    /** Indice d'une ligne qui porte un bit du filigrane lisible (pour rendre les tests précis). */
+    private int watermarkLine(List<String> lines) {
+        var planner = new MarkingPlanner(key, SyntheticSensors.SCHEMA, MarkingParameters.DEFAULT);
+        for (int i = 0; i < lines.size(); i++) {
+            var fields = lines.get(i).split(",", -1);
+            var placement = planner.placementOf(CanonicalTuple.of(Map.of(1, new IntegerValue(Long.parseLong(fields[0])))));
+            if (placement.isPresent() && placement.get().layer() == Layer.WATERMARK
+                    && !fields[placement.get().column().attributeId() - 1].isEmpty()) {
+                return i;
+            }
+        }
+        throw new AssertionError("aucune ligne du filigrane");
+    }
+
     @Test
-    void duplicatePkInTheExtractIsIndeterminate() throws IOException {
+    void duplicatedLineInAMarkedExtractIsExcludedAndTheVerdictStaysPositive() throws IOException {
+        var reference = detect(key, copy);
         var lines = dataLines(copy);
-        lines.add(lines.get(1_234));
+        lines.add(lines.get(watermarkLine(lines)));
+
+        var result = detect(key, join(SyntheticSensors.HEADER, lines));
+        assertEquals(Verdict.POSITIF, result.verdict());
+        assertEquals(Reason.NONE, result.reason());
+        assertEquals(2, result.excludedDuplicateRows(), "les deux occurrences sont écartées");
+        assertEquals(1, result.extract().repeatedKeys());
+        assertEquals(reference.bitsRead() - 1, result.bitsRead(), "la ligne ambiguë ne compte plus");
+        assertEquals(result.bitsRead(), result.bitsMatching());
+    }
+
+    @Test
+    void aTamperedDuplicateCannotInjectAWrongBit() throws IOException {
+        var lines = dataLines(copy);
+        int index = watermarkLine(lines);
+        var fields = lines.get(index).split(",", -1);
+        var planner = new MarkingPlanner(key, SyntheticSensors.SCHEMA, MarkingParameters.DEFAULT);
+        var column = planner.placementOf(CanonicalTuple.of(Map.of(1, new IntegerValue(Long.parseLong(fields[0])))))
+                .orElseThrow().column();
+        int position = column.attributeId() - 1;
+        fields[position] = new BigDecimal(fields[position]).add(column.step()).toPlainString(); // un pas δ : bit inversé
+        lines.add(0, String.join(",", fields));     // la version retouchée arrive même en premier
+
+        var result = detect(key, join(SyntheticSensors.HEADER, lines));
+        assertEquals(Verdict.POSITIF, result.verdict());
+        assertEquals(result.bitsRead(), result.bitsMatching(), "aucun faux bit n'a été compté");
+        assertEquals(2, result.excludedDuplicateRows());
+    }
+
+    @Test
+    void anExtractMadeOnlyOfDuplicatesIsIndeterminate() throws IOException {
+        var lines = dataLines(copy);
+        lines.addAll(dataLines(copy));
         var result = detect(key, join(SyntheticSensors.HEADER, lines));
         assertEquals(Verdict.INDETERMINE, result.verdict());
-        assertEquals(Reason.DUPLICATE_KEY, result.reason());
-        assertEquals(1, result.extract().duplicateKeys());
+        assertEquals(Reason.INSUFFICIENT_BITS, result.reason());
+        assertEquals(0, result.bitsRead());
+        assertEquals(2L * ROWS, result.excludedDuplicateRows());
     }
 
     @Test

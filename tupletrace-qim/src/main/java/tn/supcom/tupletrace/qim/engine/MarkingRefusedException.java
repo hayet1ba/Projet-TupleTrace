@@ -11,7 +11,9 @@ public final class MarkingRefusedException extends RuntimeException {
         SCHEMA_MISMATCH,
         TYPE_MISMATCH,
         PRECISION_EXCEEDED,
-        TOLERANCE_EXCEEDED
+        TOLERANCE_EXCEEDED,
+        /** Le fichier source n'a pas les mêmes octets aux deux passes : la copie doit être jetée. */
+        SOURCE_CHANGED
     }
 
     private final Code code;
