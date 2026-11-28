@@ -12,7 +12,7 @@
 
   <properties>
     <flyway.version>11.20.3</flyway.version>
-    <postgresql.version>42.7.11</postgresql.version>
+    <postgresql.version>42.7.15</postgresql.version>
     <db.test.sources>src/test/java</db.test.sources>
   </properties>
 
